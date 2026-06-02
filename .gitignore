@@ -1,0 +1,49 @@
+.DS_Store
+*.bak
+*.tmp
+*.log
+*.orig
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Swift / Xcode / SwiftPM
+.build/
+DerivedData/
+*.xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Local app bundles and run artifacts
+dist/
+*.app/
+
+# Local configuration with user paths or secrets
+config/duet.config.json
+config/duet.secrets.json
+.env
+.env.*
+
+# Codex local state
+.codex/environments/*.local.toml
+
+# Retired git history (local only, never commit)
+.git-old/
+
+# Claude Code local state and worktrees
+.claude/
+.codex/environments/
+
+# Spike tool build artifacts and deps (nested, root patterns miss these)
+tools/**/node_modules/
+tools/**/dist/
+
+# Excluded from publication
+Duet_ClaudeDesign/
+docs/DUET_MVP_SPEC.md

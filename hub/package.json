@@ -1,0 +1,47 @@
+{
+  "name": "@duet/hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local streamable-HTTP MCP message bus for the Duet macOS control room.",
+  "license": "MIT",
+  "packageManager": "npm@11.12.1",
+  "type": "module",
+  "keywords": [
+    "duet",
+    "mcp",
+    "model-context-protocol",
+    "macos",
+    "agent-coordination"
+  ],
+  "homepage": "https://github.com/TKY-27/Duet#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TKY-27/Duet.git",
+    "directory": "hub"
+  },
+  "bugs": {
+    "url": "https://github.com/TKY-27/Duet/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "license:check": "node scripts/check-license-inventory.mjs",
+    "smoke": "npm run build && node dist/smoke.js",
+    "start": "node dist/server.js",
+    "test": "npm run build && node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3"
+  }
+}

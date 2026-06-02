@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: hub/package-lock.json
+      - run: npm ci
+        working-directory: hub
+      - run: npm audit --omit=dev
+        working-directory: hub
+      - run: npm run license:check
+        working-directory: hub
+      - run: npm test
+        working-directory: hub
+      - run: npm run smoke
+        working-directory: hub
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: shellcheck script/*.sh
+      - run: ./script/scan_for_secrets.sh
+
+  app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build --package-path app
+      - run: swift test --package-path app
