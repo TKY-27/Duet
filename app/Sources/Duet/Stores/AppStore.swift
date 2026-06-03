@@ -16,7 +16,7 @@ final class AppStore: ObservableObject {
     @Published var progressIntervalSec = 20
     @Published var stallThresholdSec = 120
     @Published var stalls = AgentStalls.normal
-    @Published var theme: DuetTheme = .dark
+    @Published var theme: DuetTheme = .light
     @Published var lastError: String?
     @Published private(set) var hubOutput = HubProcessOutput.empty
 

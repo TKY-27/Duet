@@ -94,7 +94,7 @@ struct DuetPalette {
 }
 
 private struct DuetPaletteKey: EnvironmentKey {
-    static let defaultValue = DuetPalette.forTheme(.dark)
+    static let defaultValue = DuetPalette.forTheme(.light)
 }
 
 extension EnvironmentValues {

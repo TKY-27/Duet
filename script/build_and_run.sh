@@ -54,8 +54,7 @@ find_dev_bundle_pid() {
 
 wait_for_pid() {
   local pid="$1"
-  local attempt
-  for attempt in {1..50}; do
+  for _ in {1..50}; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       return 0
     fi
@@ -65,8 +64,8 @@ wait_for_pid() {
 }
 
 wait_for_dev_bundle_pid() {
-  local attempt pid
-  for attempt in {1..80}; do
+  local pid
+  for _ in {1..80}; do
     pid="$(find_dev_bundle_pid || true)"
     if [[ -n "$pid" ]]; then
       printf '%s\n' "$pid"
@@ -79,9 +78,8 @@ wait_for_dev_bundle_pid() {
 
 kill_pid_and_wait() {
   local pid="$1"
-  local attempt
   kill "$pid" >/dev/null 2>&1 || true
-  for attempt in {1..40}; do
+  for _ in {1..40}; do
     if ! kill -0 "$pid" >/dev/null 2>&1; then
       return 0
     fi
@@ -116,8 +114,8 @@ kill_existing_project_hubs() {
 
 wait_for_health() {
   local url="http://127.0.0.1:8765/health"
-  local attempt body
-  for attempt in {1..80}; do
+  local body
+  for _ in {1..80}; do
     body="$(curl -fsS --max-time 1 "$url" 2>/dev/null || true)"
     if [[ "$body" == *'"ok":true'* && "$body" == *'"service":"duet-hub"'* ]]; then
       return 0

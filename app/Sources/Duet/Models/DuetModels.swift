@@ -28,10 +28,10 @@ enum AgentID: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var glyph: String {
+    var iconResourceName: String {
         switch self {
-        case .claude: "C"
-        case .codex: "</>"
+        case .claude: "claude-icon"
+        case .codex: "codex-icon"
         }
     }
 }

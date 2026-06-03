@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -356,11 +357,33 @@ struct AgentAvatar: View {
     var size: CGFloat
 
     var body: some View {
-        Text(agent.glyph)
-            .font(.system(size: agent == .codex ? size * 0.33 : size * 0.42, weight: .black, design: agent == .codex ? .monospaced : .default))
-            .foregroundStyle(agent == .claude ? Color(red: 0.11, green: 0.07, blue: 0.02) : Color(red: 0.02, green: 0.09, blue: 0.11))
-            .frame(width: size, height: size)
-            .background(agent.accent)
-            .clipShape(RoundedRectangle(cornerRadius: agent == .claude ? size / 2 : 9, style: .continuous))
+        ZStack {
+            if let iconImage {
+                Image(nsImage: iconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                    .fill(agent.accent)
+                Text(String(agent.displayName.prefix(1)))
+                    .font(.system(size: size * 0.42, weight: .black))
+                    .foregroundStyle(Color.white)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        .accessibilityLabel(agent.displayName)
+    }
+
+    private var iconImage: NSImage? {
+        guard let url = Bundle.module.url(
+            forResource: agent.iconResourceName,
+            withExtension: "png",
+            subdirectory: "Resources/AgentIcons"
+        ) else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 }
