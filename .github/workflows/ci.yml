@@ -11,7 +11,7 @@ jobs:
   hub:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -31,7 +31,7 @@ jobs:
   hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: shellcheck script/*.sh
       - run: ./script/scan_for_secrets.sh
@@ -39,6 +39,6 @@ jobs:
   app:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: swift build --package-path app
       - run: swift test --package-path app
