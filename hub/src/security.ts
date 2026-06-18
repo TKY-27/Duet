@@ -7,6 +7,18 @@ export interface RequestDenial {
   message: string;
 }
 
+// Periodically drop expired rate-limit windows so the map cannot grow unbounded when the
+// Hub is exposed beyond loopback. unref so it never keeps the process alive.
+export function startWindowEviction(windows: Map<string, { resetAt: number }>): void {
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, window] of windows) {
+      if (window.resetAt <= now) windows.delete(key);
+    }
+  }, 60_000);
+  timer.unref?.();
+}
+
 export function validateLoopbackRequest(headers: IncomingHttpHeaders, config: DuetConfig): RequestDenial | undefined {
   if (!isAllowedHost(headers.host, config)) {
     return { status: 403, message: "Forbidden" };

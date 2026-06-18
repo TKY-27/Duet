@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Environment(\.duetPalette) private var palette
     @Environment(\.appLanguage) private var language
     @State private var draftRoles: Roles?
+    @State private var remoteRolesChanged = false
 
     private var rolesBinding: Binding<Roles> {
         Binding {
@@ -44,11 +45,19 @@ struct SidebarView: View {
                     ValidationSummary(issues: validationIssues)
                 }
 
+                if remoteRolesChanged {
+                    RemoteRolesChangedNotice {
+                        draftRoles = nil
+                        remoteRolesChanged = false
+                    }
+                }
+
                 Button {
                     let nextRoles = rolesBinding.wrappedValue
                     Task {
                         if await store.setRoles(nextRoles) {
                             draftRoles = nil
+                            remoteRolesChanged = false
                         }
                     }
                 } label: {
@@ -92,7 +101,16 @@ struct SidebarView: View {
             Rectangle().fill(palette.border).frame(width: 1)
         }
         .onChange(of: store.roles) { _, newValue in
-            draftRoles = newValue
+            // Don't clobber unsaved edits. draftRoles is nil only when the panel is in sync
+            // with the Hub; in that case rolesBinding already falls back to store.roles.
+            if draftRoles == nil || draftRoles == newValue {
+                draftRoles = nil
+                remoteRolesChanged = false
+            } else {
+                // Roles changed remotely while the user was editing — flag it instead of
+                // silently overwriting their input.
+                remoteRolesChanged = true
+            }
         }
     }
 
@@ -270,6 +288,35 @@ private struct ValidationSummary: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
         .accessibilityLabel(L10n.roleInputError(language))
+    }
+}
+
+private struct RemoteRolesChangedNotice: View {
+    @Environment(\.duetPalette) private var palette
+    @Environment(\.appLanguage) private var language
+    var onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 10))
+                Text(L10n.rolesUpdatedRemotely(language))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(action: onDiscard) {
+                Text(L10n.discardLocalEdits(language))
+                    .font(.system(size: 10.5, weight: .bold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(palette.human)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(palette.warning)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
     }
 }
 

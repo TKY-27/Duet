@@ -5,6 +5,7 @@ final class AppStore: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var running = false
     @Published var repoPath = ""
+    @Published var branch = ""
     @Published var roles = Roles(
         claude: RoleAssignment(role: "implementer", task: "Implement the requested change and ask Codex for review."),
         codex: RoleAssignment(role: "reviewer", task: "Read changed files from disk and review the implementation.")
@@ -21,6 +22,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var hubOutput = HubProcessOutput.empty
 
     let projectRoot = ProjectLocator.projectRoot()
+    private static let maxTranscriptMessages = 300
     private let port = 8765
     private let processManager = HubProcessManager()
     private var controlToken: String?
@@ -47,7 +49,7 @@ final class AppStore: ObservableObject {
     }
 
     var branchLabel: String {
-        "local"
+        branch.isEmpty ? "—" : branch
     }
 
     func start() {
@@ -119,6 +121,56 @@ final class AppStore: ObservableObject {
     @discardableResult
     func inject(message: String, to recipient: Recipient) async -> Bool {
         await sendCommand(InjectHumanCommand(to: recipient, message: message))
+    }
+
+    func exportData(format: TranscriptExporter.Format, language: AppLanguage) -> Data? {
+        switch format {
+        case .markdown:
+            return TranscriptExporter.markdown(
+                transcript: transcript,
+                repoPath: repoPath,
+                branch: branch,
+                roles: roles,
+                exportedAt: Date(),
+                language: language
+            ).data(using: .utf8)
+        case .json:
+            return try? TranscriptExporter.json(transcript: transcript)
+        }
+    }
+
+    func noteUserFacingError(_ message: String) {
+        recordError(message)
+    }
+
+    /// Fetch ready-to-paste MCP registration commands (with real tokens) from the Hub's
+    /// control-token-gated /setup endpoint. Tokens never travel the control WebSocket.
+    func fetchSetup() async -> DuetSetupInfo? {
+        guard let controlToken else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = port
+        components.path = "/setup"
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2.0
+        request.setValue(controlToken, forHTTPHeaderField: "X-Duet-Control-Token")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(DuetSetupInfo.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Load a role prompt from the repo's prompts/ directory for the given language.
+    func rolePrompt(for agent: AgentID, language: AppLanguage) -> String? {
+        let base = agent == .claude ? "claude-implementer" : "codex-reviewer"
+        let suffix = language == .english ? ".en" : ""
+        let url = projectRoot.appendingPathComponent("prompts/\(base)\(suffix).md")
+        return try? String(contentsOf: url, encoding: .utf8)
     }
 
     private func connectWhenHealthy() async {
@@ -199,11 +251,16 @@ final class AppStore: ObservableObject {
     }
 
     private func apply(_ event: ControlEvent) {
-        connectionState = .connected
         switch event {
         case .snapshot(let snapshot):
+            // A full snapshot is sent exactly once when the control socket connects, so it
+            // is the authoritative "connection established" signal. Other live events must
+            // not flip connection state — that authority belongs to HubClient.onStateChange,
+            // otherwise an `.error` event would mask a reconnecting/failed badge.
+            connectionState = .connected
             running = snapshot.running
             repoPath = snapshot.repoPath
+            branch = snapshot.branch
             roles = snapshot.roles
             transcript = snapshot.transcript
             queues = snapshot.queues
@@ -214,10 +271,7 @@ final class AppStore: ObservableObject {
             stalls = snapshot.stalls
             lastError = nil
         case .message(let message):
-            transcript.append(message)
-            if transcript.count > 300 {
-                transcript.removeFirst(transcript.count - 300)
-            }
+            appendMessage(message)
         case .rolesUpdated(let roles):
             self.roles = roles
         case .status(let running):
@@ -229,6 +283,17 @@ final class AppStore: ObservableObject {
             stalls[agent] = AgentStall(stalled: stalled, sinceMs: sinceMs)
         case .error(let message):
             lastError = redact(message)
+        }
+    }
+
+    private func appendMessage(_ message: BusMessage) {
+        // Hub assigns a strictly increasing seq. Ignore anything we've already shown so a
+        // reconnect snapshot followed by an overlapping live broadcast cannot duplicate or
+        // reorder the transcript.
+        if let lastSeq = transcript.last?.seq, message.seq <= lastSeq { return }
+        transcript.append(message)
+        if transcript.count > Self.maxTranscriptMessages {
+            transcript.removeFirst(transcript.count - Self.maxTranscriptMessages)
         }
     }
 
@@ -268,6 +333,11 @@ final class AppStore: ObservableObject {
 
 private struct HubHealth: Decodable {
     var ok: Bool
+}
+
+struct DuetSetupInfo: Decodable {
+    let claudeCommand: String
+    let codexCommand: String
 }
 
 private enum AppStoreError: LocalizedError {

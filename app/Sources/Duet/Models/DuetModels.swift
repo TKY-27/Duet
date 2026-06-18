@@ -62,6 +62,35 @@ enum Recipient: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum RoomViewMode: String, CaseIterable, Identifiable {
+    case chat
+    case log
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .chat: "bubble.left.and.bubble.right"
+        case .log: "list.bullet.rectangle"
+        }
+    }
+
+    func accessibilityLabel(_ language: AppLanguage) -> String {
+        switch self {
+        case .chat:
+            switch language {
+            case .japanese: "チャット表示"
+            case .english: "Chat view"
+            }
+        case .log:
+            switch language {
+            case .japanese: "ログ表示"
+            case .english: "Log view"
+            }
+        }
+    }
+}
+
 enum DuetTheme: String, CaseIterable, Identifiable {
     case dark
     case light
@@ -198,6 +227,7 @@ struct BusMessage: Codable, Identifiable, Equatable {
 struct Snapshot: Codable, Equatable {
     var running: Bool
     var repoPath: String
+    var branch: String
     var roles: Roles
     var transcript: [BusMessage]
     var queues: QueueDepth
@@ -210,6 +240,7 @@ struct Snapshot: Codable, Equatable {
     init(
         running: Bool,
         repoPath: String,
+        branch: String = "",
         roles: Roles,
         transcript: [BusMessage],
         queues: QueueDepth,
@@ -221,6 +252,7 @@ struct Snapshot: Codable, Equatable {
     ) {
         self.running = running
         self.repoPath = repoPath
+        self.branch = branch
         self.roles = roles
         self.transcript = transcript
         self.queues = queues
@@ -234,6 +266,7 @@ struct Snapshot: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case running
         case repoPath
+        case branch
         case roles
         case transcript
         case queues
@@ -248,6 +281,7 @@ struct Snapshot: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         running = try container.decode(Bool.self, forKey: .running)
         repoPath = try container.decode(String.self, forKey: .repoPath)
+        branch = try container.decodeIfPresent(String.self, forKey: .branch) ?? ""
         roles = try container.decode(Roles.self, forKey: .roles)
         transcript = try container.decode([BusMessage].self, forKey: .transcript)
         queues = try container.decode(QueueDepth.self, forKey: .queues)

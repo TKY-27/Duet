@@ -82,6 +82,7 @@ export interface SendResult extends Record<string, unknown> {
 export interface Snapshot {
   running: boolean;
   repoPath: string;
+  branch: string;
   roles: Roles;
   transcript: BusMessage[];
   queues: Record<AgentId, number>;

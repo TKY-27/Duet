@@ -60,6 +60,90 @@ enum L10n {
         }
     }
 
+    static func viewMode(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "表示モード"
+        case .english: "View mode"
+        }
+    }
+
+    static func export(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "会話をエクスポート"
+        case .english: "Export conversation"
+        }
+    }
+
+    static func setup(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "セットアップ"
+        case .english: "Setup"
+        }
+    }
+
+    static func setupTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "クイックセットアップ"
+        case .english: "Quick setup"
+        }
+    }
+
+    static func setupIntro(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "登録コマンドとロールプロンプトをコピーして各アプリに貼り付けます。コマンドにはトークンが含まれます—共有しないでください。"
+        case .english: "Copy the registration commands and role prompts into each app. The commands contain tokens — do not share them."
+        }
+    }
+
+    static func setupUnavailable(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Hub を開始すると登録コマンドを取得できます。"
+        case .english: "Start the Hub to fetch the registration commands."
+        }
+    }
+
+    static func copyRegistration(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "登録コマンドをコピー"
+        case .english: "Copy registration command"
+        }
+    }
+
+    static func copyPrompt(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "ロールプロンプトをコピー"
+        case .english: "Copy role prompt"
+        }
+    }
+
+    static func registrationWord(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "登録コマンド"
+        case .english: "registration command"
+        }
+    }
+
+    static func promptWord(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "プロンプト"
+        case .english: "prompt"
+        }
+    }
+
+    static func copied(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "コピーしました"
+        case .english: "Copied"
+        }
+    }
+
+    static func exportFailed(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "エクスポートに失敗しました。"
+        case .english: "Export failed."
+        }
+    }
+
     static func language(_ language: AppLanguage) -> String {
         switch language {
         case .japanese: "言語"
@@ -165,10 +249,108 @@ enum L10n {
         }
     }
 
+    static func rolesUpdatedRemotely(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "ロールがリモートで更新されました。編集中の内容は保持しています。"
+        case .english: "Roles were updated remotely. Your edits are preserved."
+        }
+    }
+
+    static func discardLocalEdits(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "編集を破棄して反映"
+        case .english: "Discard edits and adopt"
+        }
+    }
+
     static func emptyLog(_ language: AppLanguage) -> String {
         switch language {
         case .japanese: "Hubイベントがここに表示されます"
         case .english: "Hub events will appear here"
+        }
+    }
+
+    static func onboardingTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Duet へようこそ"
+        case .english: "Welcome to Duet"
+        }
+    }
+
+    static func onboardingStep1(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "両エージェントの MCP エンドポイントを登録する"
+        case .english: "Register both agents' MCP endpoints"
+        }
+    }
+
+    static func onboardingStep2(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "左パネルでロールを割り当てる"
+        case .english: "Assign roles in the sidebar"
+        }
+    }
+
+    static func onboardingStep3(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "各アプリにロールプロンプトを貼り付ける"
+        case .english: "Paste the role prompts into each app"
+        }
+    }
+
+    static func onboardingStep4(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "「開始」を押して対話を始める"
+        case .english: "Press Start to begin the exchange"
+        }
+    }
+
+    static func onboardingHint(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "ツールバーの「セットアップ」から登録コマンドとプロンプトをコピーできます。"
+        case .english: "Use Setup in the toolbar to copy the registration commands and prompts."
+        }
+    }
+
+    static func jumpToLatest(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "最新へ"
+        case .english: "Jump to latest"
+        }
+    }
+
+    static func searchPlaceholder(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "会話を検索..."
+        case .english: "Search conversation..."
+        }
+    }
+
+    static func clearSearch(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "検索をクリア"
+        case .english: "Clear search"
+        }
+    }
+
+    static func humanFilter(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "人間"
+        case .english: "Human"
+        }
+    }
+
+    static func noResults(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "一致するメッセージがありません"
+        case .english: "No matching messages"
+        }
+    }
+
+    static func jumpToLatestCount(_ language: AppLanguage, count: Int) -> String {
+        switch language {
+        case .japanese: "最新へ（\(count)件）"
+        case .english: "Jump to latest (\(count))"
         }
     }
 

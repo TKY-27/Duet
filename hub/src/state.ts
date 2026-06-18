@@ -15,6 +15,7 @@ import type {
 } from "./types.js";
 import { AGENT_IDS, peerOf } from "./types.js";
 import { assertSafeCoordinationMessage, assertSafeRoleAssignment } from "./contentSafety.js";
+import { readGitBranch } from "./git.js";
 
 interface Waiter {
   resolve: (message: BusMessage | undefined) => void;
@@ -163,6 +164,7 @@ export class DuetState {
     return {
       running: this.running,
       repoPath: this.config.repoPath,
+      branch: readGitBranch(this.config.repoPath),
       roles: cloneRoles(this.roles),
       transcript: this.transcript.map(cloneMessage),
       queues: {

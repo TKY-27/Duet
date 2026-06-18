@@ -18,17 +18,19 @@ The important constraint is simple: **code does not travel through chat, OCR, or
 
 ![Duet demo](assets/duet-demo.gif)
 
-* This GIF may differ from the actual app appearance.
-* このGIFは本アプリと見た目が異なることがあります。
-
 ## Status
 
 This repository currently implements the Phase 1-2 MVP plus Phase 4b stall observation:
 
-- TypeScript Hub with `/claude`, `/codex`, `/control`, and `/health`
+- TypeScript Hub with `/claude`, `/codex`, `/control`, `/health`, and `/setup`
 - MCP tools: `get_briefing`, `send`, and `await_reply`
 - Long-polling `await_reply` with progress notifications when the client provides a progress token
 - SwiftUI macOS app that launches the Hub, connects to `/control`, displays the live transcript, updates roles, and injects human messages
+- Transcript with a chat/log view toggle, text search and per-agent filtering, day separators, and a jump-to-latest control
+- One-click Setup that copies the MCP registration commands (with the per-agent tokens) and the role prompts to the clipboard
+- Conversation export to Markdown or JSON
+- Repo-relative file paths in messages are clickable and open the file, restricted to `repoPath`
+- Current Git branch shown in the toolbar and sidebar
 - Stall observation and GUI warning display when an agent appears inactive without an active `await_reply` waiter
 - Project-local Run action for the Codex desktop app
 
@@ -38,10 +40,15 @@ Phase 3 OCR, Phase 4c wake-up automation, session rollover, and worktree orchest
 
 このリポジトリは、現時点で Phase 1-2 の MVP と Phase 4b の停滞観測を実装しています:
 
-- `/claude`、`/codex`、`/control`、`/health` を持つ TypeScript Hub
+- `/claude`、`/codex`、`/control`、`/health`、`/setup` を持つ TypeScript Hub
 - MCP ツール: `get_briefing`、`send`、`await_reply`
 - クライアントが progress token を提供する場合の progress notification 付きロングポーリング `await_reply`
 - Hub を起動し、`/control` に接続し、ライブ transcript 表示・ロール更新・人間メッセージ注入を行う SwiftUI macOS アプリ
+- チャット／ログの表示切替、テキスト検索とエージェント別フィルタ、日付区切り、最新へ移動を備えた transcript 表示
+- MCP 登録コマンド（エージェントごとのトークン入り）とロールプロンプトをクリップボードにコピーするワンクリック・セットアップ
+- 会話の Markdown / JSON エクスポート
+- メッセージ内のリポジトリ相対パスをクリックでファイルを開く機能（`repoPath` 内に限定）
+- ツールバーとサイドバーに現在の Git ブランチを表示
 - アクティブな `await_reply` waiter が無いままエージェントが非アクティブに見える場合の停滞観測と GUI 警告表示
 - Codex デスクトップアプリ向けの project-local Run action
 
@@ -133,15 +140,15 @@ cp config/duet.config.example.json config/duet.config.json
 
 `config/duet.config.json` is gitignored because it can contain local paths and task text. Duet.app does not fall back to the example file at runtime. If the local config is missing, it starts in an error state and does not launch the Hub.
 
-The values below are the recommended real-machine settings from the Phase 0 measurement path: `holdSec` is 180 seconds when progress notifications are available, `noProgressHoldSec` is 50 seconds when they are not, and `progressIntervalSec` is 20 seconds.
+The values below match the conservative defaults the Hub ships with (`holdSec` 50s, `noProgressHoldSec` 25s, `progressIntervalSec` 20s) and are identical to `config/duet.config.example.json`. The Phase 0 timeout spike has not been measured on every machine, so treat these as safe starting points, not proven maxima. After you run `tools/duet-timeout-spike` against your Claude Desktop and Codex.app and confirm that periodic progress notifications extend a held tool call, you can raise `holdSec` toward ~180s (max 300) and `noProgressHoldSec` toward ~50s (max 60). Until you have measured your machine, keep these conservative values so `await_reply` always returns and re-arms cleanly.
 
 ```json
 {
   "host": "127.0.0.1",
   "port": 8765,
   "repoPath": "/ABSOLUTE/PATH/TO/SHARED/REPOSITORY",
-  "holdSec": 180,
-  "noProgressHoldSec": 50,
+  "holdSec": 50,
+  "noProgressHoldSec": 25,
   "progressIntervalSec": 20,
   "roles": {
     "claude": { "role": "implementer", "task": "Implement the change." },
@@ -176,15 +183,15 @@ cp config/duet.config.example.json config/duet.config.json
 
 `config/duet.config.json` はローカルパスやタスク文を含みうるため gitignore されています。Duet.app は実行時にサンプルファイルへフォールバックしません。ローカル設定が無いとエラー状態で起動し、Hub を立ち上げません。
 
-以下の値は Phase 0 の実測経路で使った推奨値です。progress notification が使える場合の `holdSec` は 180 秒、使えない場合の `noProgressHoldSec` は 50 秒、`progressIntervalSec` は 20 秒です。
+以下の値は Hub の保守的な既定値（`holdSec` 50秒・`noProgressHoldSec` 25秒・`progressIntervalSec` 20秒）と一致し、`config/duet.config.example.json` と同じです。Phase 0 のタイムアウト実測は全マシンで取られたわけではないため、これらは「確定した上限」ではなく「安全な初期値」として扱ってください。`tools/duet-timeout-spike` を自分の Claude Desktop / Codex.app に対して実行し、progress notification がツール呼び出しの待機を延命することを確認できたら、`holdSec` を ~180秒（上限300）まで、`noProgressHoldSec` を ~50秒（上限60）まで上げて構いません。実測するまでは、`await_reply` が確実に返って再アームできるよう、この保守的な値を維持してください。
 
 ```json
 {
   "host": "127.0.0.1",
   "port": 8765,
   "repoPath": "/ABSOLUTE/PATH/TO/SHARED/REPOSITORY",
-  "holdSec": 180,
-  "noProgressHoldSec": 50,
+  "holdSec": 50,
+  "noProgressHoldSec": 25,
   "progressIntervalSec": 20,
   "roles": {
     "claude": { "role": "implementer", "task": "Implement the change." },
@@ -216,7 +223,7 @@ The Hub exposes two agent-specific MCP route roots. When the MCP client can send
 - Claude: `http://127.0.0.1:8765/claude`
 - Codex: `http://127.0.0.1:8765/codex`
 
-Important Claude note: for the normal local Duet setup, “register the bare Claude root” means registering it in **Claude Code** with HTTP direct registration. Do **not** paste this local HTTP URL into the Claude Desktop connector screen, and do **not** use a `claude_desktop_config.json` remote-URL shape for this path. That connector flow is for different assumptions, such as publicly reachable HTTPS/OAuth-style connectors, and it is exactly the kind of red-box trap Duet is trying not to make you debug at 2 a.m.
+Important Claude note: for the normal local Duet setup, “register the bare Claude root” means registering it in **Claude Code** with HTTP direct registration. Do **not** paste this local HTTP URL into the Claude Desktop connector screen, and do **not** use a `claude_desktop_config.json` remote-URL shape for this path. That connector flow assumes a different setup, such as a publicly reachable HTTPS or OAuth-style connector, and will not work for this local HTTP endpoint.
 
 ## MCP 登録
 
@@ -225,7 +232,7 @@ Hub はエージェントごとに2つの MCP ルートを公開します。MCP 
 - Claude: `http://127.0.0.1:8765/claude`
 - Codex: `http://127.0.0.1:8765/codex`
 
-Claude について重要な注意です。通常のローカル Duet 用途で「Claude の素のルートを登録する」と言う場合、それは **Claude Code** に HTTP 直結登録するという意味です。このローカル HTTP URL を Claude Desktop のコネクタ画面に貼らないでください。また、この用途では `claude_desktop_config.json` のリモート URL 形式も使わないでください。あのコネクタ経路は、公開到達可能な HTTPS や OAuth 風のコネクタを前提にした別ルートです。つまり、深夜2時に赤枠とにらめっこするための罠ではありません。
+Claude について重要な注意です。通常のローカル Duet 用途で「Claude の素のルートを登録する」と言う場合、それは **Claude Code** に HTTP 直結登録するという意味です。このローカル HTTP URL を Claude Desktop のコネクタ画面に貼らないでください。また、この用途では `claude_desktop_config.json` のリモート URL 形式も使わないでください。このコネクタ経路は、公開到達可能な HTTPS や OAuth 風のコネクタを前提とした別の仕組みで、このローカル HTTP エンドポイントでは動作しません。
 
 If a client cannot set MCP HTTP headers, use the secret-bearing fallback URL only for that client:
 
