@@ -6,6 +6,7 @@ struct SetupView: View {
     @Environment(\.duetPalette) private var palette
     @Environment(\.appLanguage) private var language
     @State private var setup: DuetSetupInfo?
+    @State private var prompts: [AgentID: String] = [:]
     @State private var isLoading = true
     @State private var copiedLabel: String?
 
@@ -60,11 +61,9 @@ struct SetupView: View {
                 copyButton(L10n.copyRegistration(language), systemImage: "terminal") {
                     copy(command, label: "\(agent.displayName) \(L10n.registrationWord(language))")
                 }
-                if store.rolePrompt(for: agent, language: language) != nil {
+                if let prompt = prompts[agent] {
                     copyButton(L10n.copyPrompt(language), systemImage: "doc.on.doc") {
-                        if let prompt = store.rolePrompt(for: agent, language: language) {
-                            copy(prompt, label: "\(agent.displayName) \(L10n.promptWord(language))")
-                        }
+                        copy(prompt, label: "\(agent.displayName) \(L10n.promptWord(language))")
                     }
                 }
             }
@@ -97,8 +96,18 @@ struct SetupView: View {
         copiedLabel = label
     }
 
+    @MainActor
     private func load() async {
         isLoading = true
+        // Read the role prompts from disk once here rather than in `body`, which can be
+        // re-evaluated frequently.
+        var loaded: [AgentID: String] = [:]
+        for agent in AgentID.allCases {
+            if let prompt = store.rolePrompt(for: agent, language: language) {
+                loaded[agent] = prompt
+            }
+        }
+        prompts = loaded
         setup = await store.fetchSetup()
         isLoading = false
     }

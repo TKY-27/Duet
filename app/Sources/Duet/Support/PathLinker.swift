@@ -22,16 +22,27 @@ enum PathLinker {
     /// Renders message text with in-repo file paths linked via the custom `duet-file` scheme.
     static func attributedMessage(_ text: String, repoPath: String) -> AttributedString {
         var attributed = AttributedString(text)
-        guard !repoPath.isEmpty else { return attributed }
-        for token in candidates(in: text) {
-            guard let link = linkURL(for: token, repoPath: repoPath) else { continue }
-            // Link every occurrence of this token.
-            var searchRange = attributed.startIndex..<attributed.endIndex
-            while let range = attributed[searchRange].range(of: token) {
-                attributed[range].link = link
-                attributed[range].underlineStyle = .single
-                searchRange = range.upperBound..<attributed.endIndex
-            }
+        guard !repoPath.isEmpty, let pattern else { return attributed }
+        // Apply links to the exact ranges the regex matched. Searching the string for each
+        // token would clobber a longer path's suffix when a basename also appears (e.g.
+        // linking "foo.swift" inside "src/foo.swift").
+        let matches = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        var linkCache: [String: URL?] = [:]
+        for match in matches {
+            guard let range = Range(match.range, in: text) else { continue }
+            let token = String(text[range])
+            // Only bother resolving tokens that look like paths: a slash or a known extension.
+            guard token.contains("/") || knownExtensions.contains(fileExtension(of: token)) else { continue }
+            let link = linkCache[token] ?? {
+                let resolved = linkURL(for: token, repoPath: repoPath)
+                linkCache[token] = resolved
+                return resolved
+            }()
+            guard let link else { continue }
+            guard let start = AttributedString.Index(range.lowerBound, within: attributed),
+                  let end = AttributedString.Index(range.upperBound, within: attributed) else { continue }
+            attributed[start..<end].link = link
+            attributed[start..<end].underlineStyle = .single
         }
         return attributed
     }
@@ -73,22 +84,6 @@ enum PathLinker {
     private static func isInside(_ url: URL, root: URL) -> Bool {
         let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
         return url.path == root.path || url.path.hasPrefix(rootPath)
-    }
-
-    private static func candidates(in text: String) -> [String] {
-        guard let pattern else { return [] }
-        let matches = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
-        var seen = Set<String>()
-        var result: [String] = []
-        for match in matches {
-            guard let range = Range(match.range, in: text) else { continue }
-            let value = String(text[range])
-            // Only bother resolving tokens that look like paths: a slash or a known extension.
-            let looksPathy = value.contains("/") || knownExtensions.contains(fileExtension(of: value))
-            guard looksPathy, seen.insert(value).inserted else { continue }
-            result.append(value)
-        }
-        return result
     }
 
     private static func fileExtension(of value: String) -> String {

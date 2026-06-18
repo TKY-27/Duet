@@ -125,6 +125,27 @@ final class DuetTests: XCTestCase {
         XCTAssertNil(PathLinker.resolvedFileURL("/etc/hosts", repoPath: repo.path), "absolute path outside repo is rejected")
     }
 
+    func testPathLinkerLinksExactRangesWithoutClobbering() throws {
+        let fileManager = FileManager.default
+        let repo = fileManager.temporaryDirectory.appendingPathComponent("duet-link2-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: repo.appendingPathComponent("src"), withIntermediateDirectories: true)
+        try "x".write(to: repo.appendingPathComponent("src/foo.swift"), atomically: true, encoding: .utf8)
+        try "y".write(to: repo.appendingPathComponent("foo.swift"), atomically: true, encoding: .utf8)
+        defer { try? fileManager.removeItem(at: repo) }
+
+        let attributed = PathLinker.attributedMessage("edited src/foo.swift and foo.swift", repoPath: repo.path)
+
+        var links: [(text: String, path: String)] = []
+        for run in attributed.runs where run.link != nil {
+            links.append((String(attributed[run.range].characters), run.link?.path ?? ""))
+        }
+
+        // The long path links to src/foo.swift as one run; the standalone basename links to
+        // the repo-root foo.swift — the longer path's suffix must not be clobbered.
+        XCTAssertTrue(links.contains { $0.text == "src/foo.swift" && $0.path.hasSuffix("/src/foo.swift") })
+        XCTAssertTrue(links.contains { $0.text == "foo.swift" && $0.path.hasSuffix("/foo.swift") && !$0.path.contains("/src/") })
+    }
+
     func testErrorRedactorRemovesProjectRootHomeAndTokens() {
         let projectRoot = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Projects/Duet")
