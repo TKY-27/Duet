@@ -1,10 +1,14 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ToolbarView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.duetPalette) private var palette
     @Environment(\.appLanguage) private var language
     @AppStorage("duet.language") private var languageRaw = AppLanguage.systemDefault.rawValue
+    @AppStorage("duet.roomViewMode") private var roomViewMode: RoomViewMode = .chat
+    @State private var showingSetup = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -23,6 +27,31 @@ struct ToolbarView: View {
 
             HubStatusBadge(state: store.connectionState)
 
+            Button {
+                showingSetup = true
+            } label: {
+                Image(systemName: "checklist")
+            }
+            .fixedSize()
+            .help(L10n.setup(language))
+            .accessibilityLabel(L10n.setup(language))
+            .popover(isPresented: $showingSetup, arrowEdge: .bottom) {
+                SetupView()
+            }
+
+            Menu {
+                ForEach(TranscriptExporter.Format.allCases) { format in
+                    Button(format.rawValue.capitalized) { export(format) }
+                }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(store.transcript.isEmpty)
+            .help(L10n.export(language))
+            .accessibilityLabel(L10n.export(language))
+
             Picker(L10n.language(language), selection: $languageRaw) {
                 ForEach(AppLanguage.allCases) { language in
                     Text(language.shortLabel).tag(language.rawValue)
@@ -32,6 +61,18 @@ struct ToolbarView: View {
             .labelsHidden()
             .accessibilityLabel(L10n.language(language))
             .frame(width: 128)
+
+            Picker(L10n.viewMode(language), selection: $roomViewMode) {
+                ForEach(RoomViewMode.allCases) { mode in
+                    Image(systemName: mode.systemImage)
+                        .accessibilityLabel(mode.accessibilityLabel(language))
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(L10n.viewMode(language))
+            .frame(width: 88)
 
             Picker(L10n.theme(language), selection: $store.theme) {
                 ForEach(DuetTheme.allCases) { theme in
@@ -50,6 +91,21 @@ struct ToolbarView: View {
         .background(palette.toolbar)
         .overlay(alignment: .bottom) {
             Rectangle().fill(palette.border).frame(height: 1)
+        }
+    }
+
+    private func export(_ format: TranscriptExporter.Format) {
+        guard let data = store.exportData(format: format, language: language) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "duet-transcript.\(format.fileExtension)"
+        if let type = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            store.noteUserFacingError(L10n.exportFailed(language))
         }
     }
 }

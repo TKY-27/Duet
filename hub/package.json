@@ -43,5 +43,8 @@
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
     "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "hono": "^4.12.26"
   }
 }

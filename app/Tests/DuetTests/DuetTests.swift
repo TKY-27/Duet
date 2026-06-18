@@ -74,6 +74,78 @@ final class DuetTests: XCTestCase {
         XCTAssertTrue(issues.contains { $0.agent == .codex && $0.field == .role })
     }
 
+    func testMarkdownExportRendersHeaderAndQuotedBody() {
+        let message = BusMessage(seq: 3, kind: "agent", from: "claude", to: "codex", message: "Line one\nLine two", createdAt: Date(timeIntervalSince1970: 0))
+        let roles = Roles(
+            claude: RoleAssignment(role: "implementer", task: "x"),
+            codex: RoleAssignment(role: "reviewer", task: "y")
+        )
+
+        let markdown = TranscriptExporter.markdown(
+            transcript: [message],
+            repoPath: "/tmp/repo",
+            branch: "main",
+            roles: roles,
+            exportedAt: Date(timeIntervalSince1970: 0),
+            language: .english
+        )
+
+        XCTAssertTrue(markdown.contains("# Duet transcript"))
+        XCTAssertTrue(markdown.contains("/tmp/repo (main)"))
+        XCTAssertTrue(markdown.contains("**Claude** (implementer) → Codex"))
+        XCTAssertTrue(markdown.contains("> Line one"))
+        XCTAssertTrue(markdown.contains("> Line two"))
+    }
+
+    func testJSONExportRoundTrips() throws {
+        let message = BusMessage(seq: 1, kind: "human", from: "human", to: "both", message: "hi", createdAt: Date(timeIntervalSince1970: 0))
+
+        let data = try TranscriptExporter.json(transcript: [message])
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let roundTripped = try decoder.decode([BusMessage].self, from: data)
+
+        XCTAssertEqual(roundTripped, [message])
+    }
+
+    func testPathLinkerRejectsOutsideRepoAndMissingFiles() throws {
+        let fileManager = FileManager.default
+        let repo = fileManager.temporaryDirectory.appendingPathComponent("duet-link-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: repo, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: repo) }
+
+        let file = repo.appendingPathComponent("src/foo.swift")
+        try fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+
+        XCTAssertNotNil(PathLinker.resolvedFileURL("src/foo.swift", repoPath: repo.path), "in-repo existing file resolves")
+        XCTAssertNotNil(PathLinker.resolvedFileURL("./src/foo.swift", repoPath: repo.path), "leading ./ resolves")
+        XCTAssertNil(PathLinker.resolvedFileURL("src/missing.swift", repoPath: repo.path), "missing file is not linked")
+        XCTAssertNil(PathLinker.resolvedFileURL("../../etc/passwd", repoPath: repo.path), "path traversal is rejected")
+        XCTAssertNil(PathLinker.resolvedFileURL("/etc/hosts", repoPath: repo.path), "absolute path outside repo is rejected")
+    }
+
+    func testPathLinkerLinksExactRangesWithoutClobbering() throws {
+        let fileManager = FileManager.default
+        let repo = fileManager.temporaryDirectory.appendingPathComponent("duet-link2-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: repo.appendingPathComponent("src"), withIntermediateDirectories: true)
+        try "x".write(to: repo.appendingPathComponent("src/foo.swift"), atomically: true, encoding: .utf8)
+        try "y".write(to: repo.appendingPathComponent("foo.swift"), atomically: true, encoding: .utf8)
+        defer { try? fileManager.removeItem(at: repo) }
+
+        let attributed = PathLinker.attributedMessage("edited src/foo.swift and foo.swift", repoPath: repo.path)
+
+        var links: [(text: String, path: String)] = []
+        for run in attributed.runs where run.link != nil {
+            links.append((String(attributed[run.range].characters), run.link?.path ?? ""))
+        }
+
+        // The long path links to src/foo.swift as one run; the standalone basename links to
+        // the repo-root foo.swift — the longer path's suffix must not be clobbered.
+        XCTAssertTrue(links.contains { $0.text == "src/foo.swift" && $0.path.hasSuffix("/src/foo.swift") })
+        XCTAssertTrue(links.contains { $0.text == "foo.swift" && $0.path.hasSuffix("/foo.swift") && !$0.path.contains("/src/") })
+    }
+
     func testErrorRedactorRemovesProjectRootHomeAndTokens() {
         let projectRoot = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Projects/Duet")

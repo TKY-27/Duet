@@ -6,7 +6,12 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { attachControlServer } from "./control.js";
 import { loadConfig } from "./config.js";
 import { redactControlEvent } from "./contentSafety.js";
-import { validateControlToken, validateLoopbackRequest, validateMcpToken } from "./security.js";
+import {
+  startWindowEviction,
+  validateControlToken,
+  validateLoopbackRequest,
+  validateMcpToken,
+} from "./security.js";
 import { DuetState } from "./state.js";
 import type { AgentId, DuetConfig } from "./types.js";
 import { createAgentMcpServer } from "./tools/index.js";
@@ -40,6 +45,30 @@ export function createDuetExpressApp(state: DuetState, config: DuetConfig): expr
     response.json({
       ok: true,
       service: "duet-hub",
+    });
+  });
+
+  // Returns ready-to-paste MCP registration commands with the real per-agent tokens.
+  // Control-token gated and served only over loopback so tokens never travel the WS
+  // broadcast channel the transcript flows on.
+  app.get("/setup", (request, response) => {
+    const denial = validateControlToken(readControlTokenHeader(request), config);
+    if (denial) {
+      response.status(denial.status).json({ ok: false, error: denial.message });
+      return;
+    }
+    const base = `http://${config.host}:${config.port}`;
+    const claudeJson = JSON.stringify({
+      type: "http",
+      url: `${base}/claude`,
+      headers: { Authorization: `Bearer ${config.mcpTokens.claude}` },
+    });
+    response.json({
+      ok: true,
+      claudeCommand: `claude mcp add-json duet '${claudeJson}' -s user`,
+      codexCommand:
+        `export DUET_CODEX_MCP_TOKEN="${config.mcpTokens.codex}"\n` +
+        `codex mcp add duet --url ${base}/codex --bearer-token-env-var DUET_CODEX_MCP_TOKEN`,
     });
   });
 
@@ -236,8 +265,12 @@ function readControlTokenHeader(request: Request): string | undefined {
 
 function createRateLimiter(config: DuetConfig): express.RequestHandler {
   const windows = new Map<string, { count: number; resetAt: number }>();
+  startWindowEviction(windows);
   return (request, response, next) => {
-    const key = request.socket.remoteAddress ?? "unknown";
+    // Key by remote address AND route bucket so the two agents and the health plane each
+    // get an independent budget. On loopback every client shares 127.0.0.1, so a chatty
+    // agent must not be able to exhaust the peer's allowance from one shared bucket.
+    const key = `${request.socket.remoteAddress ?? "unknown"}:${routeBucket(request.path)}`;
     const now = Date.now();
     const window = windows.get(key);
     if (!window || window.resetAt <= now) {
@@ -252,6 +285,10 @@ function createRateLimiter(config: DuetConfig): express.RequestHandler {
     }
     next();
   };
+}
+
+function routeBucket(pathname: string): string {
+  return pathname.split("/")[1] || "root";
 }
 
 function jsonErrorHandler(error: unknown, _request: Request, response: Response, next: NextFunction): void {

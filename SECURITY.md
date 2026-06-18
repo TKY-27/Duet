@@ -22,3 +22,21 @@ Maintainers should acknowledge private reports before asking for more detail in 
 - Do not commit local config, `config/duet.secrets.json`, credentials, tokens, or real user data.
 - Do not use OCR as a code transport path.
 - Prefer narrow, auditable changes for authentication, permissions, process spawning, and external API integration.
+
+## Defense-in-depth notes
+
+- **Content-safety scanning is best-effort, not a guarantee.** The Hub rejects bus
+  messages that look like source code or contain recognizable secret formats (private
+  keys, AWS/GCP/GitHub/Stripe/Slack tokens, JWTs, padded base64 blobs, and `key:`-style
+  assignments). These heuristics reduce accidental leakage but can be bypassed by novel
+  or obfuscated formats. The real protection is architectural: agents share the repo on
+  disk and exchange only natural-language coordination — never paste code or secrets into
+  bus messages regardless of what the filter allows.
+- **`allowNonLoopbackHost` widens the attack surface.** With it enabled the Hub accepts
+  Host/Origin headers from non-loopback addresses; anyone who can reach the port and holds
+  a token can drive the agents. Only enable it behind a reviewed authentication and
+  network-exposure plan.
+- **`allowUnsafeRepoPath` removes the repo-boundary guard.** Normally `repoPath` must be a
+  Git worktree and may not be `/`, `$HOME`, the project root, or sensitive system/home
+  directories. Enabling this flag lets the agents operate on arbitrary paths — only use it
+  for a path you have personally vetted.

@@ -275,6 +275,19 @@ test("legacy MCP paths are rejected and health details require control token", a
     const detailsPayload = (await details.json()) as Record<string, unknown>;
     assert.equal(detailsPayload.service, "duet-hub");
     assert.equal(detailsPayload.running, true);
+
+    const deniedSetup = await fetch(`http://127.0.0.1:${port}/setup`);
+    assert.equal(deniedSetup.status, 401);
+
+    const setup = await fetch(`http://127.0.0.1:${port}/setup`, {
+      headers: { "X-Duet-Control-Token": config.controlToken },
+    });
+    assert.equal(setup.status, 200);
+    const setupPayload = (await setup.json()) as Record<string, unknown>;
+    assert.match(String(setupPayload.claudeCommand), /claude mcp add-json duet/);
+    assert.match(String(setupPayload.codexCommand), /codex mcp add duet/);
+    assert.ok(String(setupPayload.claudeCommand).includes(config.mcpTokens.claude));
+    assert.ok(String(setupPayload.codexCommand).includes(config.mcpTokens.codex));
   } finally {
     await new Promise<void>((resolve, reject) => {
       httpServer.close((error) => (error ? reject(error) : resolve()));
@@ -331,6 +344,30 @@ test("rate limit rejects abusive clients", async () => {
     assert.equal(first.status, 200);
     const second = await fetch(`http://127.0.0.1:${port}/health`);
     assert.equal(second.status, 429);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      httpServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("rate limit buckets are isolated per route", async () => {
+  const limitedConfig = { ...config, maxRequestsPerMinute: 1, idleTransportTtlSec: 1 };
+  const state = new DuetState(limitedConfig);
+  const app = createDuetExpressApp(state, limitedConfig);
+  const httpServer = createServer(app);
+  await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+
+  const address = httpServer.address();
+  const port = (address as AddressInfo).port;
+
+  try {
+    // Exhaust the "health" bucket.
+    assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 429);
+    // A different route bucket ("claude") must still be served: 401 for the missing token,
+    // not 429 from the health plane's exhausted budget.
+    assert.equal((await fetch(`http://127.0.0.1:${port}/claude`, { method: "POST" })).status, 401);
   } finally {
     await new Promise<void>((resolve, reject) => {
       httpServer.close((error) => (error ? reject(error) : resolve()));
