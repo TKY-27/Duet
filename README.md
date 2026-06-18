@@ -6,11 +6,11 @@ Duet is a macOS-only OSS control room. It coordinates two official desktop agent
 
 There are already plenty of OSS projects that make Claude Code CLI and Codex CLI review each other while implementing changes. Duet is for people who would rather not live inside the terminal void. The agents stay in the official desktop apps, and Duet gives them a local coordination room. Source-first setup still includes a few commands because, well, OSS, but the product experience is GUI-first rather than a CLI-vs-CLI ritual.
 
-GUI が大好きな人たちへ！
+GUI が大好きなみなさん！
 
-Duet は macOS 専用の OSS で、2つの公式デスクトップエージェント — Claude Desktop 内の Claude Code と Codex.app — を、ローカルの MCP ハブ経由で会話・相互レビューさせるための「コントロールルーム」です。あなたが起動するのは1つの SwiftUI アプリ（Duet.app）だけ。アプリが Hub を子プロセスとして起動し、対話ログをライブ表示し、ロールを割り当てられます。もちろん人間が割り込むことも可能です。
+Duet は macOS 専用の OSS で、2つの公式デスクトップアプリ (Claude Desktop 内の Claude Code と Codex.app) を、なんと！ローカルの MCP ハブ経由で会話・相互レビューさせることができます！あなたが起動するのは1つの SwiftUI アプリ（Duet.app）だけ。アプリが Hub を子プロセスとして起動し、対話ログをライブ表示し、ロールを割り当てられます。もちろん人間が割り込むことも可能です。
 
-Claude Code CLI と Codex CLI 同士にレビューさせながら実装するという OSS はいくらでもありますが、Duet はターミナルが嫌いだという人のためのものです。エージェント本体は公式デスクトップアプリのまま、Duet がローカルの調整部屋になります。ソースからのセットアップにはいくつかコマンドも出てきますが、そこは OSS なので許してください。ただし Duet の主役は CLI 同士の儀式ではなく GUI です。あの闇の画面に抵抗があるという方はぜひ使ってみてください！
+ターミナル(CLI)でお互いレビューさせて実装する OSS はかなり有名ですが、Duet はターミナルが嫌いだという人のためのものです。エージェント本体は公式デスクトップアプリのままで良いのです。ソースからのセットアップにはいくつかコマンドも出てきますが、そこは OSS なので許してください。これはGUI信者専用になると思います。あの暗闇の画面に抵抗があるという方はぜひ使ってみてください！
 
 The important constraint is simple: **code does not travel through chat, OCR, or the message bus**. Claude and Codex share the same repository on disk and read or write real files with their own file tools. Duet only carries short natural-language coordination messages such as “please review `src/auth.ts`”.
 
@@ -38,7 +38,7 @@ Phase 3 OCR, Phase 4c wake-up automation, session rollover, and worktree orchest
 
 ## 現在の状態
 
-このリポジトリは、現時点で Phase 1-2 の MVP と Phase 4b の停滞観測を実装しています:
+このリポジトリは、現時点で Phase 1-2 の MVP と Phase 4b の停滞観測を実施しています:
 
 - `/claude`、`/codex`、`/control`、`/health`、`/setup` を持つ TypeScript Hub
 - MCP ツール: `get_briefing`、`send`、`await_reply`
