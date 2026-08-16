@@ -22,18 +22,18 @@ export interface DuetConfig {
   noProgressHoldSec: number;
   progressIntervalSec: number;
   stallThresholdSec: number;
+  presenceTtlSec: number;
+  repoPollIntervalSec: number;
   controlToken: string;
   allowNonLoopbackHost: boolean;
   allowUnsafeRepoPath: boolean;
   maxTranscriptMessages: number;
   maxQueueMessages: number;
   maxWaitersPerAgent: number;
-  maxTransports: number;
   maxMcpPayloadBytes: number;
   maxControlPayloadBytes: number;
   maxControlConnections: number;
   maxRequestsPerMinute: number;
-  idleTransportTtlSec: number;
   configPath?: string;
   secretsPath: string;
   projectRoot: string;
@@ -90,10 +90,53 @@ export interface Snapshot {
   progressIntervalSec: number;
   stallThresholdSec: number;
   stalls: Record<AgentId, AgentStallSnapshot>;
+  presence: Record<AgentId, AgentPresenceSnapshot>;
+  repo: RepoStatus;
 }
 
 export interface AgentStallSnapshot {
   stalled: boolean;
+  sinceMs: number;
+}
+
+export interface SessionSummary {
+  id: string;
+  startedAt: string;
+  endedAt?: string;
+  repoPath: string;
+  /** First human-readable line of the session, used as a list label. */
+  title: string;
+  messageCount: number;
+  roles: Record<AgentId, string>;
+}
+
+export interface RepoFileChange {
+  path: string;
+  /** Git short status code, or "untracked". */
+  status: string;
+  added: number;
+  removed: number;
+}
+
+export interface RepoStatus {
+  /** False when Git could not be read; the GUI shows the strip as unavailable. */
+  available: boolean;
+  branch: string;
+  head: string;
+  ahead: number;
+  behind: number;
+  files: RepoFileChange[];
+  /** True when the change list was capped for transport. */
+  truncated: boolean;
+  error?: string;
+}
+
+export interface AgentPresenceSnapshot {
+  /** The agent reached the Hub recently enough to still count as connected. */
+  connected: boolean;
+  /** The agent has reached the Hub at least once since startup. */
+  everSeen: boolean;
+  /** Milliseconds since the agent's last MCP tool call. */
   sinceMs: number;
 }
 
@@ -103,6 +146,10 @@ export type ControlEvent =
   | { type: "rolesUpdated"; roles: Roles }
   | { type: "status"; running: boolean }
   | { type: "stall"; agentId: AgentId; stalled: boolean; sinceMs: number }
+  | { type: "presence"; agentId: AgentId; connected: boolean; everSeen: boolean; sinceMs: number }
+  | { type: "repo"; repo: RepoStatus }
+  | { type: "sessions"; sessions: SessionSummary[]; currentSessionId?: string }
+  | { type: "sessionTranscript"; sessionId: string; transcript: BusMessage[] }
   | { type: "error"; message: string };
 
 export function peerOf(agentId: AgentId): AgentId {

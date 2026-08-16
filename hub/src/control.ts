@@ -35,11 +35,26 @@ const InjectHumanCommandSchema = z
 const StartCommandSchema = z.object({ type: z.literal("start") }).strict();
 const StopCommandSchema = z.object({ type: z.literal("stop") }).strict();
 
+// Session ids are server-minted UUIDs; the schema refuses anything else so a
+// crafted id cannot be used to read outside the sessions directory.
+const SessionIdSchema = z.uuid();
+
+const ListSessionsCommandSchema = z.object({ type: z.literal("listSessions") }).strict();
+const NewSessionCommandSchema = z.object({ type: z.literal("newSession") }).strict();
+const LoadSessionCommandSchema = z
+  .object({ type: z.literal("loadSession"), sessionId: SessionIdSchema })
+  .strict();
+const RefreshRepoCommandSchema = z.object({ type: z.literal("refreshRepo") }).strict();
+
 const ControlCommandSchema = z.discriminatedUnion("type", [
   SetRolesCommandSchema,
   InjectHumanCommandSchema,
   StartCommandSchema,
   StopCommandSchema,
+  ListSessionsCommandSchema,
+  NewSessionCommandSchema,
+  LoadSessionCommandSchema,
+  RefreshRepoCommandSchema,
 ]);
 
 export function attachControlServer(
@@ -100,6 +115,22 @@ export function attachControlServer(
             break;
           case "stop":
             state.setRunning(false);
+            break;
+          case "listSessions":
+            state.emitSessions();
+            break;
+          case "newSession":
+            state.startNewSession();
+            break;
+          case "loadSession":
+            sendJson(socket, {
+              type: "sessionTranscript",
+              sessionId: command.sessionId,
+              transcript: state.readSession(command.sessionId),
+            });
+            break;
+          case "refreshRepo":
+            void state.refreshRepoStatus();
             break;
         }
       } catch (error) {

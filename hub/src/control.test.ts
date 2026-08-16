@@ -23,18 +23,18 @@ const config: DuetConfig = {
   noProgressHoldSec: 1,
   progressIntervalSec: 1,
   stallThresholdSec: 30,
+  presenceTtlSec: 90,
+  repoPollIntervalSec: 10,
   controlToken: "test-control-token-000000000000000",
   allowNonLoopbackHost: false,
   allowUnsafeRepoPath: false,
   maxTranscriptMessages: 300,
   maxQueueMessages: 100,
   maxWaitersPerAgent: 20,
-  maxTransports: 40,
   maxMcpPayloadBytes: 64 * 1024,
   maxControlPayloadBytes: 16 * 1024,
   maxControlConnections: 5,
   maxRequestsPerMinute: 600,
-  idleTransportTtlSec: 600,
   secretsPath: "/tmp/duet/config/duet.secrets.json",
   projectRoot: "/tmp/duet",
 };
@@ -66,6 +66,41 @@ test("control WebSocket sends snapshot and injects human messages", async () => 
     const delivered = await state.awaitMessage("codex", 5);
     assert.equal(delivered?.from, "human");
     assert.equal(delivered?.message, "Please pause before commit.");
+  } finally {
+    socket.close();
+    controlServer.close();
+    await new Promise<void>((resolve, reject) => {
+      httpServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("control WebSocket rejects a loadSession id that is not a minted UUID", async () => {
+  const state = new DuetState(config);
+  const httpServer = createServer();
+  const controlServer = attachControlServer(httpServer, state, config);
+  await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+
+  const address = httpServer.address();
+  const port = (address as AddressInfo).port;
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/control`, {
+    headers: { "X-Duet-Control-Token": config.controlToken },
+  });
+
+  try {
+    assert.equal((await nextJson(socket)).type, "snapshot");
+
+    socket.send(JSON.stringify({ type: "loadSession", sessionId: "../../../etc/passwd" }));
+    const rejection = await nextJson(socket);
+    assert.equal(rejection.type, "error");
+    assert.equal(rejection.message, "Invalid control command.");
+
+    // A well-formed but unknown id is accepted by the schema and answers with
+    // an empty transcript rather than an error.
+    socket.send(JSON.stringify({ type: "loadSession", sessionId: "6f1b3c9e-4d2a-4c5b-9f8e-1a2b3c4d5e6f" }));
+    const empty = await nextJson(socket);
+    assert.equal(empty.type, "sessionTranscript");
+    assert.deepEqual(empty.transcript, []);
   } finally {
     socket.close();
     controlServer.close();

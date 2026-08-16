@@ -20,18 +20,18 @@ const config: DuetConfig = {
   noProgressHoldSec: 1,
   progressIntervalSec: 1,
   stallThresholdSec: 30,
+  presenceTtlSec: 90,
+  repoPollIntervalSec: 10,
   controlToken: "test-control-token-000000000000000",
   allowNonLoopbackHost: false,
   allowUnsafeRepoPath: false,
   maxTranscriptMessages: 300,
   maxQueueMessages: 100,
   maxWaitersPerAgent: 20,
-  maxTransports: 40,
   maxMcpPayloadBytes: 64 * 1024,
   maxControlPayloadBytes: 16 * 1024,
   maxControlConnections: 5,
   maxRequestsPerMinute: 600,
-  idleTransportTtlSec: 600,
   secretsPath: "/tmp/duet/config/duet.secrets.json",
   projectRoot: "/tmp/duet",
 };
@@ -132,22 +132,58 @@ test("stop resolves pending awaiters and blocks agent sends", async () => {
   assert.throws(() => state.sendFromAgent("claude", "This should not send."), /Hub is stopped/);
 });
 
-test("stall evaluation marks an inactive agent with no waiter as stalled", () => {
+test("an agent that never reached the Hub is reported absent, not stalled", () => {
+  // A fresh Hub must not accuse agents of stalling before they have ever
+  // connected: on launch that would warn about a room the human has not wired
+  // up yet. Absence is a presence fact, not a stall.
   const state = new DuetState(config, 0);
   const events = state.evaluateStalls(config.stallThresholdSec * 1000 + 1);
 
+  assert.deepEqual(events, []);
+  const snapshot = state.snapshot(config.stallThresholdSec * 1000 + 1);
+  assert.equal(snapshot.stalls.claude.stalled, false);
+  assert.equal(snapshot.presence.claude.connected, false);
+  assert.equal(snapshot.presence.claude.everSeen, false);
+});
+
+test("stall evaluation marks a previously seen, inactive agent with no waiter as stalled", () => {
+  const state = new DuetState(config, 0);
+  // Both agents check in, then go quiet without re-arming await_reply.
+  state.sendFromAgent("claude", "Starting work.", "human", 1);
+  state.sendFromAgent("codex", "Standing by.", "human", 1);
+
+  const events = state.evaluateStalls(config.stallThresholdSec * 1000 + 2);
+  const stallEvents = events.filter((event) => event.type === "stall");
+
   assert.deepEqual(
-    events.map((event) => event.type),
+    stallEvents.map((event) => event.type),
     ["stall", "stall"],
   );
   assert.deepEqual(
-    events.map((event) => {
+    stallEvents.map((event) => {
       assert.equal(event.type, "stall");
       return event.stalled;
     }),
     [true, true],
   );
-  assert.equal(state.snapshot(config.stallThresholdSec * 1000 + 1).stalls.claude.stalled, true);
+  assert.equal(state.snapshot(config.stallThresholdSec * 1000 + 2).stalls.claude.stalled, true);
+});
+
+test("presence flips to connected on first contact and back after the TTL", () => {
+  const state = new DuetState(config, 0);
+  const connectEvents = state.evaluateStalls(1);
+  assert.deepEqual(connectEvents, []);
+
+  state.sendFromAgent("claude", "Briefing received.", "human", 2);
+  const seenEvents = state.evaluateStalls(3).filter((event) => event.type === "presence");
+  assert.equal(seenEvents.length, 1);
+  assert.equal(seenEvents[0]?.type === "presence" && seenEvents[0].connected, true);
+
+  const expiredAt = config.presenceTtlSec * 1000 + 10;
+  const lostEvents = state.evaluateStalls(expiredAt).filter((event) => event.type === "presence");
+  assert.equal(lostEvents.length, 1);
+  assert.equal(lostEvents[0]?.type === "presence" && lostEvents[0].connected, false);
+  assert.equal(state.snapshot(expiredAt).presence.claude.everSeen, true);
 });
 
 test("stall evaluation does not mark agents stalled while waiters are present", async () => {
@@ -157,7 +193,10 @@ test("stall evaluation does not mark agents stalled while waiters are present", 
 
   const events = state.evaluateStalls(config.stallThresholdSec * 1000 * 10);
 
-  assert.equal(events.length, 0);
+  // A parked waiter proves the agent is still in the loop, so no stall is
+  // reported however long the silence runs. (Presence events do fire here:
+  // await_reply is itself contact with the Hub.)
+  assert.equal(events.filter((event) => event.type === "stall").length, 0);
   assert.equal(state.snapshot(config.stallThresholdSec * 1000 * 10).stalls.claude.stalled, false);
   assert.equal(state.snapshot(config.stallThresholdSec * 1000 * 10).stalls.codex.stalled, false);
 
@@ -168,12 +207,16 @@ test("stall evaluation does not mark agents stalled while waiters are present", 
 
 test("stall evaluation emits one recovery event after await_reply re-arms", async () => {
   const state = new DuetState(config, 0);
-  const firstEvents = state.evaluateStalls(config.stallThresholdSec * 1000 + 1);
+  state.sendFromAgent("claude", "Starting work.", "human", 1);
+  state.sendFromAgent("codex", "Standing by.", "human", 1);
+  const firstEvents = state.evaluateStalls(config.stallThresholdSec * 1000 + 2);
   assert.equal(firstEvents.filter((event) => event.type === "stall" && event.stalled).length, 2);
 
-  const waiting = state.awaitMessage("claude", 1000, undefined, config.stallThresholdSec * 1000 + 2);
-  const recoveryEvents = state.evaluateStalls(config.stallThresholdSec * 1000 + 2);
-  const repeatedEvents = state.evaluateStalls(config.stallThresholdSec * 1000 + 3);
+  const waiting = state.awaitMessage("claude", 1000, undefined, config.stallThresholdSec * 1000 + 3);
+  const recoveryEvents = state
+    .evaluateStalls(config.stallThresholdSec * 1000 + 3)
+    .filter((event) => event.type === "stall");
+  const repeatedEvents = state.evaluateStalls(config.stallThresholdSec * 1000 + 4);
 
   assert.deepEqual(recoveryEvents, [
     {

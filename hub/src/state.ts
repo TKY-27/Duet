@@ -8,6 +8,8 @@ import type {
   DuetConfig,
   MessageTarget,
   Recipient,
+  RepoStatus,
+  SessionSummary,
   RoleAssignment,
   Roles,
   SendResult,
@@ -15,6 +17,19 @@ import type {
 } from "./types.js";
 import { AGENT_IDS, peerOf } from "./types.js";
 import { assertSafeCoordinationMessage, assertSafeRoleAssignment } from "./contentSafety.js";
+import { PresenceTracker } from "./presence.js";
+import { readRepoStatus, repoStatusEquals } from "./git.js";
+import { SessionStore } from "./store.js";
+
+const EMPTY_REPO_STATUS: RepoStatus = {
+  available: false,
+  branch: "unknown",
+  head: "",
+  ahead: 0,
+  behind: 0,
+  files: [],
+  truncated: false,
+};
 
 interface Waiter {
   resolve: (message: BusMessage | undefined) => void;
@@ -35,20 +50,33 @@ export class DuetState {
   private readonly waiters: Record<AgentId, Waiter[]> = { claude: [], codex: [] };
   private readonly transcript: BusMessage[] = [];
   private readonly listeners = new Set<StateListener>();
-  private readonly lastActivityAt: Record<AgentId, number>;
-  private readonly stalled: Record<AgentId, boolean> = { claude: false, codex: false };
+  private readonly presence: PresenceTracker;
   private roles: Roles;
   private running = true;
   private seq = 0;
   private stallMonitor: NodeJS.Timeout | undefined;
   private stallMonitorIntervalMs: number | undefined;
+  private repoMonitor: NodeJS.Timeout | undefined;
+  private repoStatus: RepoStatus = EMPTY_REPO_STATUS;
+  private repoPollInFlight = false;
+  private readonly store: SessionStore | undefined;
 
   constructor(
     private readonly config: DuetConfig,
     initialNowMs = Date.now(),
+    store?: SessionStore,
   ) {
     this.roles = cloneRoles(config.roles);
-    this.lastActivityAt = { claude: initialNowMs, codex: initialNowMs };
+    this.store = store;
+    store?.startSession(config.repoPath, this.roles);
+    this.presence = new PresenceTracker(
+      {
+        stallThresholdSec: config.stallThresholdSec,
+        presenceTtlSec: config.presenceTtlSec,
+        hasWaiter: (agentId) => this.waiters[agentId].length > 0,
+      },
+      initialNowMs,
+    );
   }
 
   subscribe(listener: StateListener): () => void {
@@ -143,18 +171,16 @@ export class DuetState {
   setRunning(running: boolean): void {
     this.running = running;
     if (!running) {
-      this.stopStallMonitor();
-      for (const agentId of AGENT_IDS) {
-        this.stalled[agentId] = false;
-      }
+      // A stopped room is not a stalled room. Clear stall state, but keep the
+      // monitor alive: presence must keep updating while stopped so the setup
+      // flow can confirm an agent is reachable before the human presses Start.
+      this.presence.clearStalls();
       for (const agentId of AGENT_IDS) {
         for (const waiter of [...this.waiters[agentId]]) {
           this.removeWaiter(agentId, waiter);
           waiter.resolve(undefined);
         }
       }
-    } else if (this.stallMonitorIntervalMs !== undefined) {
-      this.startStallMonitor(this.stallMonitorIntervalMs);
     }
     this.emit({ type: "status", running });
   }
@@ -173,13 +199,16 @@ export class DuetState {
       noProgressHoldSec: this.config.noProgressHoldSec,
       progressIntervalSec: this.config.progressIntervalSec,
       stallThresholdSec: this.config.stallThresholdSec,
-      stalls: this.stallSnapshots(nowMs),
+      stalls: this.presence.stallSnapshots(nowMs, this.running),
+      presence: this.presence.presenceSnapshots(nowMs),
+      repo: this.repoStatus,
     };
   }
 
+  /** Starts periodic presence and stall observation. Runs whether or not the room is running. */
   startStallMonitor(intervalMs = 5000): void {
     this.stallMonitorIntervalMs = intervalMs;
-    if (!this.running || this.stallMonitor) return;
+    if (this.stallMonitor) return;
     this.stallMonitor = setInterval(() => {
       this.evaluateStalls(Date.now());
     }, intervalMs);
@@ -192,16 +221,93 @@ export class DuetState {
     this.stallMonitor = undefined;
   }
 
+  /** Lists stored sessions, newest first. Empty when persistence is disabled. */
+  listSessions(): SessionSummary[] {
+    return this.store?.list() ?? [];
+  }
+
+  currentSessionId(): string | undefined {
+    return this.store?.currentSession()?.id;
+  }
+
+  /** Reads a stored session's messages for GUI review. */
+  readSession(sessionId: string): BusMessage[] {
+    return this.store?.read(sessionId) ?? [];
+  }
+
+  exportSessionMarkdown(sessionId: string): string {
+    return this.store?.exportMarkdown(sessionId) ?? "";
+  }
+
+  /**
+   * Closes the current session file and opens a fresh one. The live transcript
+   * is cleared too, so the window and the new file agree.
+   */
+  startNewSession(): SessionSummary | undefined {
+    if (!this.store) return undefined;
+    const summary = this.store.startSession(this.config.repoPath, this.roles);
+    this.transcript.length = 0;
+    this.emit({ type: "snapshot", snapshot: this.snapshot() });
+    this.emitSessions();
+    return summary;
+  }
+
+  emitSessions(): void {
+    if (!this.store) return;
+    const currentSessionId = this.currentSessionId();
+    this.emit({
+      type: "sessions",
+      sessions: this.listSessions(),
+      ...(currentSessionId ? { currentSessionId } : {}),
+    });
+  }
+
+  closeStore(): void {
+    this.store?.closeSession();
+  }
+
+  /** Starts polling the shared repository and emitting `repo` events on change. */
+  startRepoMonitor(intervalMs = this.config.repoPollIntervalSec * 1000): void {
+    if (this.repoMonitor) return;
+    void this.refreshRepoStatus();
+    this.repoMonitor = setInterval(() => {
+      void this.refreshRepoStatus();
+    }, intervalMs);
+    this.repoMonitor.unref?.();
+  }
+
+  stopRepoMonitor(): void {
+    if (!this.repoMonitor) return;
+    clearInterval(this.repoMonitor);
+    this.repoMonitor = undefined;
+  }
+
+  /** Reads Git once and emits a `repo` event only when something actually changed. */
+  async refreshRepoStatus(): Promise<RepoStatus> {
+    // Git on a large tree can outlast the poll interval; skip overlapping runs
+    // rather than queueing processes behind a slow repository.
+    if (this.repoPollInFlight) return this.repoStatus;
+    this.repoPollInFlight = true;
+    try {
+      const next = await readRepoStatus(this.config.repoPath);
+      if (!repoStatusEquals(this.repoStatus, next)) {
+        this.repoStatus = next;
+        this.emit({ type: "repo", repo: next });
+      }
+      return this.repoStatus;
+    } finally {
+      this.repoPollInFlight = false;
+    }
+  }
+
+  /**
+   * Publishes presence and stall transitions. Presence is evaluated even while
+   * the room is stopped, because the setup flow needs to confirm an agent is
+   * reachable before the human presses Start.
+   */
   evaluateStalls(nowMs: number): ControlEvent[] {
-    if (!this.running) return [];
-    const events: ControlEvent[] = [];
-    for (const agentId of AGENT_IDS) {
-      const sinceMs = this.activityAgeMs(agentId, nowMs);
-      const nextStalled = this.isStalledAt(agentId, nowMs);
-      if (nextStalled === this.stalled[agentId]) continue;
-      this.stalled[agentId] = nextStalled;
-      const event: ControlEvent = { type: "stall", agentId, stalled: nextStalled, sinceMs };
-      events.push(event);
+    const events = this.presence.evaluate(nowMs, this.running);
+    for (const event of events) {
       this.emit(event);
     }
     return events;
@@ -307,6 +413,8 @@ export class DuetState {
   }
 
   private appendTranscript(message: BusMessage): void {
+    // Disk keeps every message; memory keeps only the newest window.
+    this.store?.append(message);
     this.transcript.push(cloneMessage(message));
     if (this.transcript.length > this.config.maxTranscriptMessages) {
       this.transcript.splice(0, this.transcript.length - this.config.maxTranscriptMessages);
@@ -330,28 +438,7 @@ export class DuetState {
   }
 
   private recordActivity(agentId: AgentId, nowMs: number): void {
-    this.lastActivityAt[agentId] = nowMs;
-  }
-
-  private stallSnapshots(nowMs: number): Record<AgentId, { stalled: boolean; sinceMs: number }> {
-    return {
-      claude: {
-        stalled: this.running ? this.isStalledAt("claude", nowMs) : false,
-        sinceMs: this.activityAgeMs("claude", nowMs),
-      },
-      codex: {
-        stalled: this.running ? this.isStalledAt("codex", nowMs) : false,
-        sinceMs: this.activityAgeMs("codex", nowMs),
-      },
-    };
-  }
-
-  private isStalledAt(agentId: AgentId, nowMs: number): boolean {
-    return this.activityAgeMs(agentId, nowMs) > this.config.stallThresholdSec * 1000 && this.waiters[agentId].length === 0;
-  }
-
-  private activityAgeMs(agentId: AgentId, nowMs: number): number {
-    return Math.max(0, nowMs - this.lastActivityAt[agentId]);
+    this.presence.recordActivity(agentId, nowMs);
   }
 }
 
