@@ -14,3 +14,8 @@ struct InjectHumanCommand: Encodable {
 struct SimpleCommand: Encodable {
     var type: String
 }
+
+struct LoadSessionCommand: Encodable {
+    let type = "loadSession"
+    var sessionId: String
+}

@@ -112,6 +112,11 @@ final class HubClient {
             let envelope = try decoder.decode(ControlEventEnvelope.self, from: data)
             let event = try envelope.event()
             onEvent(event)
+        } catch ControlEventError.unsupported {
+            // Forward compatibility: a control event this build does not model
+            // is not an error condition. Ignoring it keeps an older app usable
+            // against a newer Hub instead of filling the window with warnings.
+            return
         } catch {
             onEvent(.error(error.localizedDescription))
         }

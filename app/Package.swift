@@ -5,7 +5,10 @@ import PackageDescription
 let package = Package(
     name: "Duet",
     platforms: [
-        .macOS(.v14)
+        // macOS 26 only. The redesign builds on the current design language and
+        // toolbar/inspector APIs; supporting older releases would mean shipping
+        // a second, untested visual path.
+        .macOS(.v26)
     ],
     products: [
         .executable(name: "Duet", targets: ["Duet"])
