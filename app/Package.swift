@@ -1,4 +1,5 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
+// `.macOS(.v26)` below requires PackageDescription 6.2 or newer.
 
 import PackageDescription
 
