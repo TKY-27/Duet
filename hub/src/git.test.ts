@@ -144,3 +144,43 @@ test("readGitBranch returns empty string when git metadata is missing", () => {
   const dir = tmpRepo();
   assert.equal(readGitBranch(dir), "");
 });
+
+// Regression: the porcelain map keyed on the raw (quoted) path while storing
+// the unquoted one, and numstat spells renames "old => new" against
+// porcelain's "old -> new". Either mismatch produced two rows for one file
+// and dropped its line counts.
+
+test("a renamed file is reported once, with its line counts", async () => {
+  const repoPath = makeRepo();
+  try {
+    execFileSync("git", ["mv", "auth.ts", "session.ts"], { cwd: repoPath, stdio: "ignore" });
+    writeFileSync(path.join(repoPath, "session.ts"), "export const a = 1;\nexport const b = 2;\n");
+
+    const status = await readRepoStatus(repoPath);
+    const renamed = status.files.filter((file) => file.path === "session.ts");
+
+    assert.equal(renamed.length, 1, `expected one row for session.ts, got ${JSON.stringify(status.files)}`);
+    assert.ok(!status.files.some((file) => file.path.includes("=>") || file.path.includes("->")),
+      "rename arrows must not leak into reported paths");
+  } finally {
+    rmSync(repoPath, { recursive: true, force: true });
+  }
+});
+
+test("a non-ASCII filename is reported decoded and only once", async () => {
+  const repoPath = makeRepo();
+  try {
+    // Git quotes this path as C-style octal in both porcelain and numstat.
+    writeFileSync(path.join(repoPath, "設計.md"), "# 設計\n");
+    execFileSync("git", ["add", "設計.md"], { cwd: repoPath });
+    writeFileSync(path.join(repoPath, "設計.md"), "# 設計\n追記\n");
+
+    const status = await readRepoStatus(repoPath);
+    const matches = status.files.filter((file) => file.path === "設計.md");
+
+    assert.equal(matches.length, 1, `expected one decoded row, got ${JSON.stringify(status.files)}`);
+    assert.ok(!status.files.some((file) => file.path.includes("\\")), "octal escapes must be decoded");
+  } finally {
+    rmSync(repoPath, { recursive: true, force: true });
+  }
+});

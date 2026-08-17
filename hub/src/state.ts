@@ -174,7 +174,10 @@ export class DuetState {
       // A stopped room is not a stalled room. Clear stall state, but keep the
       // monitor alive: presence must keep updating while stopped so the setup
       // flow can confirm an agent is reachable before the human presses Start.
-      this.presence.clearStalls();
+      // Announce the recovery rather than letting clients infer it from status.
+      for (const event of this.presence.clearStalls()) {
+        this.emit(event);
+      }
       for (const agentId of AGENT_IDS) {
         for (const waiter of [...this.waiters[agentId]]) {
           this.removeWaiter(agentId, waiter);

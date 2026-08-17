@@ -309,3 +309,40 @@ test("redaction removes repeated same-pattern secrets", () => {
   assert.equal(redacted.includes("sk-firstsecret1234567890"), false);
   assert.equal(redacted.includes("secondsecret1234567890"), false);
 });
+
+test("stopping the room announces stall recovery instead of clearing it silently", () => {
+  const state = new DuetState(config, 0);
+  state.sendFromAgent("claude", "Starting work.", "human", 1);
+  state.sendFromAgent("codex", "Standing by.", "human", 1);
+  const stalled = state
+    .evaluateStalls(config.stallThresholdSec * 1000 + 2)
+    .filter((event) => event.type === "stall" && event.stalled);
+  assert.equal(stalled.length, 2);
+
+  const events: ControlEvent[] = [];
+  const unsubscribe = state.subscribe((event) => events.push(event));
+  state.setRunning(false);
+  unsubscribe();
+
+  // A control client must not have to infer from `status:false` that stalls
+  // are over: the Hub says so for each agent that was actually stalled.
+  const recoveries = events.filter((event) => event.type === "stall");
+  assert.equal(recoveries.length, 2);
+  assert.ok(recoveries.every((event) => event.type === "stall" && !event.stalled));
+  assert.deepEqual(
+    recoveries.map((event) => (event.type === "stall" ? event.agentId : "")).sort(),
+    ["claude", "codex"],
+  );
+  // And the status event still follows, after the recoveries.
+  assert.equal(events.at(-1)?.type, "status");
+});
+
+test("stopping a room with no stalled agent emits no stall events", () => {
+  const state = new DuetState(config, 0);
+  const events: ControlEvent[] = [];
+  const unsubscribe = state.subscribe((event) => events.push(event));
+  state.setRunning(false);
+  unsubscribe();
+
+  assert.equal(events.filter((event) => event.type === "stall").length, 0);
+});

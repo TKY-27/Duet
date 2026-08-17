@@ -95,8 +95,12 @@ function parsePorcelain(output: string): Map<string, RepoFileChange> {
     // Renames read as "old -> new"; report the destination, which is the file
     // a reviewer needs to open.
     const rawPath = line.slice(3);
-    const path = rawPath.includes(" -> ") ? (rawPath.split(" -> ").at(-1) ?? rawPath) : rawPath;
-    files.set(path, { path: unquote(path), status: code === "??" ? "untracked" : code, added: 0, removed: 0 });
+    const destination = rawPath.includes(" -> ") ? (rawPath.split(" -> ").at(-1) ?? rawPath) : rawPath;
+    // Key on the unquoted path so it matches the numstat map: Git quotes
+    // unusual bytes independently per command, and a quoted key against an
+    // unquoted one silently produces two rows for one file.
+    const path = unquote(destination);
+    files.set(path, { path, status: code === "??" ? "untracked" : code, added: 0, removed: 0 });
   }
   return files;
 }
@@ -107,12 +111,30 @@ function parseNumstat(output: string): Map<string, { added: number; removed: num
 
   for (const line of output.split("\n")) {
     const [added, removed, ...pathParts] = line.split("\t");
-    const path = pathParts.join("\t");
-    if (!path) continue;
+    const rawPath = pathParts.join("\t");
+    if (!rawPath) continue;
     // "-" marks a binary file; report it as zero lines rather than NaN.
-    counts.set(path, { added: toCount(added), removed: toCount(removed) });
+    counts.set(numstatPath(rawPath), { added: toCount(added), removed: toCount(removed) });
   }
   return counts;
+}
+
+/**
+ * Reduces a numstat path to the same destination path `parsePorcelain`
+ * produces. numstat spells a rename "old => new", and inside a common prefix
+ * as "src/{old => new}/file.ts", where porcelain spells it "old -> new" — so
+ * without this the two maps never agree on a renamed file.
+ */
+function numstatPath(rawPath: string): string {
+  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(rawPath);
+  if (braced) {
+    const [, prefix, , destination, suffix] = braced;
+    return unquote(`${prefix ?? ""}${destination ?? ""}${suffix ?? ""}`.replace(/\/{2,}/g, "/"));
+  }
+  if (rawPath.includes(" => ")) {
+    return unquote(rawPath.split(" => ").at(-1) ?? rawPath);
+  }
+  return unquote(rawPath);
 }
 
 function mergeChanges(
@@ -126,7 +148,7 @@ function mergeChanges(
       existing.added = counts.added;
       existing.removed = counts.removed;
     } else {
-      merged.set(path, { path: unquote(path), status: "M", ...counts });
+      merged.set(path, { path, status: "M", ...counts });
     }
   }
   return [...merged.values()].sort((a, b) => a.path.localeCompare(b.path));
@@ -137,14 +159,39 @@ function toCount(value: string | undefined): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-/** Git quotes paths containing unusual bytes; show the readable form. */
+/**
+ * Git quotes paths containing unusual bytes, escaping them as C-style octal
+ * (`"\346\227\245.ts"`). `JSON.parse` rejects octal escapes, so decode those
+ * bytes first and read the result as UTF-8 — otherwise every non-ASCII
+ * filename, which for this project means most of them, reaches the GUI as
+ * escape codes.
+ */
 function unquote(path: string): string {
   if (!path.startsWith('"') || !path.endsWith('"')) return path;
-  try {
-    return JSON.parse(path) as string;
-  } catch {
-    return path;
+  const inner = path.slice(1, -1);
+  const bytes: number[] = [];
+  for (let index = 0; index < inner.length; index += 1) {
+    const character = inner[index];
+    if (character !== "\\") {
+      bytes.push(...Buffer.from(character ?? "", "utf8"));
+      continue;
+    }
+    const octal = /^[0-7]{3}/.exec(inner.slice(index + 1, index + 4));
+    if (octal) {
+      bytes.push(Number.parseInt(octal[0], 8));
+      index += 3;
+      continue;
+    }
+    const next = inner[index + 1];
+    const simple: Record<string, number> = { n: 10, t: 9, r: 13, '"': 34, "\\": 92 };
+    if (next !== undefined && next in simple) {
+      bytes.push(simple[next] as number);
+      index += 1;
+      continue;
+    }
+    bytes.push(92);
   }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 export function repoStatusEquals(a: RepoStatus, b: RepoStatus): boolean {

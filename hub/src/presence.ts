@@ -108,11 +108,23 @@ export class PresenceTracker {
     return events;
   }
 
-  /** Clears stall state without forgetting that an agent was ever seen. */
-  clearStalls(): void {
+  /**
+   * Clears stall state without forgetting that an agent was ever seen, and
+   * returns the recovery events for the agents that were actually stalled.
+   *
+   * The caller must emit these. Duet.app also clears stalls when it sees
+   * `status:false`, but that is the client inferring a state change the Hub
+   * never announced — any other control client would keep showing a stall that
+   * no longer exists. The Hub says what changed.
+   */
+  clearStalls(nowMs = Date.now()): ControlEvent[] {
+    const events: ControlEvent[] = [];
     for (const agentId of AGENT_IDS) {
+      if (!this.stalled[agentId]) continue;
       this.stalled[agentId] = false;
+      events.push({ type: "stall", agentId, stalled: false, sinceMs: this.activityAgeMs(agentId, nowMs) });
     }
+    return events;
   }
 
   private presenceSnapshot(agentId: AgentId, nowMs: number): AgentPresenceSnapshot {
