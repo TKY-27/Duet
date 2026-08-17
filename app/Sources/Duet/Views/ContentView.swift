@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The window.
@@ -10,10 +11,42 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @State private var showInspector = true
+    @State private var showSetup = false
+    @State private var searchText = ""
+    @State private var activeSenders: Set<String> = []
     @AppStorage("duet.language") private var languageRaw = AppLanguage.systemDefault.rawValue
+    @AppStorage("duet.transcriptDensity") private var densityRaw = TranscriptDensity.comfortable.rawValue
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? .systemDefault
+    }
+
+    /// An empty `activeSenders` means "show everyone", so toggling the last
+    /// sender off clears the filter rather than hiding the whole transcript.
+    private func senderBinding(_ sender: String) -> Binding<Bool> {
+        Binding {
+            activeSenders.contains(sender)
+        } set: { isOn in
+            if isOn { activeSenders.insert(sender) } else { activeSenders.remove(sender) }
+        }
+    }
+
+    /// Writes the transcript through a save panel. The panel is the only part
+    /// that belongs in the view; the rendering lives in `TranscriptExporter`.
+    private func export(_ format: TranscriptExporter.Format) {
+        guard let data = store.exportData(format: format, language: language) else {
+            store.noteUserFacingError(L10n.exportFailed(language))
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "duet-transcript.\(format == .markdown ? "md" : "json")"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url)
+        } catch {
+            store.noteUserFacingError(L10n.exportFailed(language))
+        }
     }
 
     var body: some View {
@@ -27,9 +60,10 @@ struct ContentView: View {
                 if store.isViewingArchivedSession {
                     ArchivedSessionBanner(language: language)
                 }
-                TranscriptView()
+                TranscriptView(searchText: searchText, activeSenders: $activeSenders)
                 ComposerView()
             }
+            .searchable(text: $searchText, placement: .toolbar, prompt: L10n.searchPlaceholder(language))
             .navigationTitle("Duet")
             .navigationSubtitle(subtitle)
             .toolbar { toolbarContent }
@@ -75,6 +109,53 @@ struct ContentView: View {
                 Label(L10n.newSession(language), systemImage: "plus")
             }
             .disabled(!store.connectionState.isConnected)
+        }
+
+        ToolbarItem {
+            Picker(L10n.viewMode(language), selection: $densityRaw) {
+                ForEach(TranscriptDensity.allCases) { density in
+                    Label(density.accessibilityLabel(language), systemImage: density.systemImage)
+                        .tag(density.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(L10n.viewMode(language))
+        }
+
+        ToolbarItem {
+            Menu {
+                ForEach(AgentID.allCases) { agent in
+                    Toggle(agent.displayName, isOn: senderBinding(agent.rawValue))
+                }
+                Toggle(L10n.humanShort(language), isOn: senderBinding("human"))
+                Divider()
+                Button(L10n.clearFilter(language)) { activeSenders.removeAll() }
+                    .disabled(activeSenders.isEmpty)
+            } label: {
+                Label(L10n.filter(language), systemImage: activeSenders.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+            }
+        }
+
+        ToolbarItem {
+            Button {
+                showSetup.toggle()
+            } label: {
+                Label(L10n.setup(language), systemImage: "gearshape")
+            }
+            .popover(isPresented: $showSetup, arrowEdge: .bottom) {
+                SetupView().environment(\.appLanguage, language)
+            }
+        }
+
+        ToolbarItem {
+            Menu {
+                Button("Markdown") { export(.markdown) }
+                Button("JSON") { export(.json) }
+            } label: {
+                Label(L10n.export(language), systemImage: "square.and.arrow.up")
+            }
+            .disabled(store.visibleTranscript.isEmpty)
         }
 
         // Inspector toggle is the trailing-most item, per macOS convention.

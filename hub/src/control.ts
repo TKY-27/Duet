@@ -3,7 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import * as z from "zod/v4";
 import type { ControlEvent, DuetConfig, Roles } from "./types.js";
 import type { DuetState } from "./state.js";
-import { validateControlToken, validateLoopbackRequest } from "./security.js";
+import { startWindowEviction, validateControlToken, validateLoopbackRequest } from "./security.js";
 
 const RoleAssignmentSchema = z
   .object({
@@ -161,6 +161,7 @@ function readToken(request: IncomingMessage, url: URL | undefined): string | und
 
 function createControlRateLimiter(config: DuetConfig): { allow(request: IncomingMessage): boolean } {
   const windows = new Map<string, { count: number; resetAt: number }>();
+  startWindowEviction(windows);
   return {
     allow(request: IncomingMessage): boolean {
       const key = request.socket.remoteAddress ?? "unknown";

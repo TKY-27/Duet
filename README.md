@@ -66,18 +66,22 @@ behaviour. See [docs/RELEASE_PACKAGING.md](docs/RELEASE_PACKAGING.md).
 cp config/duet.config.example.json config/duet.config.json
 ```
 
-`config/duet.config.json` is gitignored because it contains local paths and
-task text. Duet does not fall back to the example at runtime: without a local
-config it starts in an error state and does not launch the hub.
+`config/duet.config.json` is gitignored because it can contain local paths and task text. Duet.app does not fall back to the example file at runtime. If the local config is missing, it starts in an error state and does not launch the Hub.
+
+The values below match the conservative defaults the Hub ships with (`holdSec` 50s, `noProgressHoldSec` 25s, `progressIntervalSec` 20s) and are identical to `config/duet.config.example.json`. The Phase 0 timeout spike has not been measured on every machine, so treat these as safe starting points, not proven maxima. After you run `tools/duet-timeout-spike` against your Claude Desktop and Codex.app and confirm that periodic progress notifications extend a held tool call, you can raise `holdSec` toward ~180s (max 300) and `noProgressHoldSec` toward ~50s (max 60). Until you have measured your machine, keep these conservative values so `await_reply` always returns and re-arms cleanly.
 
 ```json
 {
   "host": "127.0.0.1",
   "port": 8765,
   "repoPath": "/ABSOLUTE/PATH/TO/SHARED/REPOSITORY",
-  "holdSec": 180,
-  "noProgressHoldSec": 50,
-  "progressIntervalSec": 20
+  "holdSec": 50,
+  "noProgressHoldSec": 25,
+  "progressIntervalSec": 20,
+  "roles": {
+    "claude": { "role": "implementer", "task": "Implement the change." },
+    "codex": { "role": "reviewer", "task": "Review the changed files from disk." }
+  }
 }
 ```
 
@@ -164,7 +168,13 @@ per-request timeout from firing. When it does not, the hold is capped to
 
 Shipped: the hub with its three MCP tools and dual-era support, the control
 WebSocket, presence and stall observation, read-only Git status, and
-append-only session history with Markdown export.
+append-only session history with Markdown and JSON export.
+
+In the window: a single-column transcript with comfortable and compact
+density, day separators, text search and per-sender filtering, jump-to-latest,
+one-click Setup that copies each agent's registration command and role prompt,
+and repo-relative paths in messages that open the real file — restricted to
+`repoPath`, so message text can never open an arbitrary path.
 
 Not shipped, though documented: ScreenCaptureKit + Vision OCR, wake-up
 automation for stalled agents, session rollover, and worktree orchestration.

@@ -62,6 +62,42 @@ enum Recipient: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How densely the transcript is set.
+///
+/// This replaces main's chat/log `RoomViewMode`. The redesign has no chat
+/// bubbles to switch away from, so the meaningful axis is no longer "which
+/// metaphor" but "how much room each message gets": comfortable sets messages
+/// as prose for reading, compact packs one line per message with
+/// second-precision times for scanning a long run.
+enum TranscriptDensity: String, CaseIterable, Identifiable {
+    case comfortable
+    case compact
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .comfortable: "text.alignleft"
+        case .compact: "list.bullet.rectangle"
+        }
+    }
+
+    func accessibilityLabel(_ language: AppLanguage) -> String {
+        switch self {
+        case .comfortable:
+            switch language {
+            case .japanese: "通常表示"
+            case .english: "Comfortable view"
+            }
+        case .compact:
+            switch language {
+            case .japanese: "密表示"
+            case .english: "Compact view"
+            }
+        }
+    }
+}
+
 struct RoleAssignment: Codable, Equatable {
     var role: String
     var task: String
@@ -174,6 +210,7 @@ struct BusMessage: Codable, Identifiable, Equatable {
 struct Snapshot: Codable, Equatable {
     var running: Bool
     var repoPath: String
+    var branch: String
     var roles: Roles
     var transcript: [BusMessage]
     var queues: QueueDepth
@@ -188,6 +225,7 @@ struct Snapshot: Codable, Equatable {
     init(
         running: Bool,
         repoPath: String,
+        branch: String = "",
         roles: Roles,
         transcript: [BusMessage],
         queues: QueueDepth,
@@ -201,6 +239,7 @@ struct Snapshot: Codable, Equatable {
     ) {
         self.running = running
         self.repoPath = repoPath
+        self.branch = branch
         self.roles = roles
         self.transcript = transcript
         self.queues = queues
@@ -216,6 +255,7 @@ struct Snapshot: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case running
         case repoPath
+        case branch
         case roles
         case transcript
         case queues
@@ -235,6 +275,7 @@ struct Snapshot: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         running = try container.decode(Bool.self, forKey: .running)
         repoPath = try container.decode(String.self, forKey: .repoPath)
+        branch = try container.decodeIfPresent(String.self, forKey: .branch) ?? ""
         roles = try container.decode(Roles.self, forKey: .roles)
         transcript = try container.decode([BusMessage].self, forKey: .transcript)
         queues = try container.decode(QueueDepth.self, forKey: .queues)

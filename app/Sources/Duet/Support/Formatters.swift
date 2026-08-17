@@ -9,6 +9,28 @@ enum DuetFormatters {
         return formatter
     }()
 
+    /// Second-precision time for the dense log view.
+    static let logTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    /// Full localized date+time used in hover tooltips so overnight sessions stay unambiguous.
+    static let fullTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    /// Compact, locale-aware day label for the date separators (e.g. "Thu, Jun 18").
+    static let daySeparator: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("EEEMMMd")
+        return formatter
+    }()
+
     /// Session list dates. Locale-aware, since this one is read rather than
     /// scanned in a column.
     static let sessionDate: DateFormatter = {

@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { RepoStatus, RepoFileChange } from "./types.js";
 
@@ -166,4 +168,40 @@ export function repoStatusEquals(a: RepoStatus, b: RepoStatus): boolean {
       );
     })
   );
+}
+
+/**
+ * Branch name only, read straight from Git metadata on disk: no subprocess,
+ * so this is cheap enough to call on every snapshot and has no argument
+ * surface at all. `readRepoStatus` above shells out for the richer picture
+ * (ahead/behind and per-file counts) that cannot be read from HEAD alone.
+ *
+ * Best-effort current branch for a repoPath, read directly from Git metadata on disk
+ * (no subprocess, no network). Returns the branch name, a short commit hash for a
+ * detached HEAD, or "" on any error. Safe to call on every snapshot.
+ */
+export function readGitBranch(repoPath: string): string {
+  try {
+    const gitDir = resolveGitDir(path.join(repoPath, ".git"));
+    if (!gitDir) return "";
+    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
+    const refMatch = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    if (refMatch?.[1]) return refMatch[1];
+    // Detached HEAD: the file holds a raw commit hash.
+    return /^[0-9a-f]{7,40}$/i.test(head) ? head.slice(0, 7) : "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveGitDir(gitPath: string): string | undefined {
+  const stats = fs.statSync(gitPath);
+  if (stats.isDirectory()) return gitPath;
+  if (stats.isFile()) {
+    // Linked worktree or submodule: ".git" is a file "gitdir: <path>".
+    const match = /^gitdir:\s*(.+)$/.exec(fs.readFileSync(gitPath, "utf8").trim());
+    if (!match?.[1]) return undefined;
+    return path.isAbsolute(match[1]) ? match[1] : path.resolve(path.dirname(gitPath), match[1]);
+  }
+  return undefined;
 }

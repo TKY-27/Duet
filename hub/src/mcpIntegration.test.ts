@@ -373,6 +373,19 @@ test("unauthenticated MCP requests are rejected and health details require contr
     const detailsPayload = (await details.json()) as Record<string, unknown>;
     assert.equal(detailsPayload.service, "duet-hub");
     assert.equal(detailsPayload.running, true);
+
+    const deniedSetup = await fetch(`${hub.baseUrl}/setup`);
+    assert.equal(deniedSetup.status, 401);
+
+    const setup = await fetch(`${hub.baseUrl}/setup`, {
+      headers: { "X-Duet-Control-Token": config.controlToken },
+    });
+    assert.equal(setup.status, 200);
+    const setupPayload = (await setup.json()) as Record<string, unknown>;
+    assert.match(String(setupPayload.claudeCommand), /claude mcp add-json duet/);
+    assert.match(String(setupPayload.codexCommand), /codex mcp add duet/);
+    assert.ok(String(setupPayload.claudeCommand).includes(config.mcpTokens.claude));
+    assert.ok(String(setupPayload.codexCommand).includes(config.mcpTokens.codex));
   } finally {
     await hub.stop();
   }
@@ -425,6 +438,21 @@ test("rate limit rejects abusive clients", async () => {
     assert.equal(first.status, 200);
     const second = await fetch(`${hub.baseUrl}/health`);
     assert.equal(second.status, 429);
+  } finally {
+    await hub.stop();
+  }
+});
+
+test("rate limit buckets are isolated per route", async () => {
+  const hub = await startHub({ maxRequestsPerMinute: 1 });
+
+  try {
+    // Exhaust the "health" bucket.
+    assert.equal((await fetch(`${hub.baseUrl}/health`)).status, 200);
+    assert.equal((await fetch(`${hub.baseUrl}/health`)).status, 429);
+    // A different route bucket ("claude") must still be served: 401 for the
+    // missing token, not 429 borrowed from the health plane's spent budget.
+    assert.equal((await fetch(`${hub.baseUrl}/claude`, { method: "POST" })).status, 401);
   } finally {
     await hub.stop();
   }

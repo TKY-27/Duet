@@ -4,7 +4,21 @@ const SECRET_PATTERNS: RegExp[] = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\bgh[pousr]_[A-Za-z0-9_]{16,}\b/,
+  /\bgithub_pat_[0-9A-Za-z_]{22,}\b/,
   /\bxox[baprs]-[A-Za-z0-9-]{16,}\b/,
+  // AWS access key IDs (long-term AKIA / temporary ASIA).
+  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/,
+  // Google API keys.
+  /\bAIza[0-9A-Za-z_-]{35}\b/,
+  // Stripe live keys.
+  /\b(?:sk|rk)_live_[0-9A-Za-z]{16,}\b/,
+  // Slack incoming-webhook URLs.
+  /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9_/]+/,
+  // JSON Web Tokens (header.payload.signature).
+  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+  // Padded base64 blobs (>=32 chars + "=" padding): catches encoded secrets without
+  // flagging hex commit SHAs or identifiers, which carry no "=" padding.
+  /\b[A-Za-z0-9+/]{32,}={1,2}(?![A-Za-z0-9+/=])/,
   /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{12,}/i,
 ];
 
@@ -28,10 +42,14 @@ export function assertSafeCoordinationText(value: string, label: string): void {
     throw new Error(`${label} appears to contain a secret. Do not send secrets or private data through Duet.`);
   }
 
-  const codeLikeLines = value
-    .split(/\r?\n/)
-    .filter((line) => CODE_LINE_PATTERN.test(line) || /^\s{2,}\S.*(?:=>|=|\(|\))/.test(line));
-  if (codeLikeLines.length >= 3) {
+  const lines = value.split(/\r?\n/);
+  // Strong signals: a line that starts with a code keyword or terminates in a brace.
+  const strongCodeLines = lines.filter((line) => CODE_LINE_PATTERN.test(line));
+  // Loose signals add indented operator lines, which alone are common in prose.
+  const codeLikeLines = lines.filter(
+    (line) => CODE_LINE_PATTERN.test(line) || /^\s{2,}\S.*(?:=>|=|\(|\))/.test(line),
+  );
+  if (strongCodeLines.length >= 2 || codeLikeLines.length >= 3) {
     throw new Error(`${label} appears to contain source code. Send file paths and a natural-language summary only.`);
   }
 }
