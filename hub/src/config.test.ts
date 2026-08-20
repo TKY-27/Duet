@@ -25,6 +25,7 @@ test("relative repoPath resolves from projectRoot, not process cwd", () => {
     assert.equal(config.controlToken, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG");
     assert.match(config.mcpTokens.claude, /^[A-Za-z0-9_-]{43,}$/);
     assert.match(config.mcpTokens.codex, /^[A-Za-z0-9_-]{43,}$/);
+    assert.equal(config.allowUrlTokens, false);
     assert.equal(config.secretsPath, path.join(projectRoot, "config", "duet.secrets.json"));
   } finally {
     restoreEnv("DUET_REPO_ROOT", previousRoot);

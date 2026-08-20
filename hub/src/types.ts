@@ -27,6 +27,8 @@ export interface DuetConfig {
   controlToken: string;
   allowNonLoopbackHost: boolean;
   allowUnsafeRepoPath: boolean;
+  /** Accept secret-bearing /<agent>/<token> URLs only when explicitly enabled. */
+  allowUrlTokens: boolean;
   maxTranscriptMessages: number;
   maxQueueMessages: number;
   maxWaitersPerAgent: number;

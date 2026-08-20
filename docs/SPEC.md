@@ -58,8 +58,9 @@ method maps.
 - `GET /health/details` returns detailed state and requires `X-Duet-Control-Token`.
 - MCP endpoint roots: `/claude` and `/codex`.
 - Registration uses `Authorization: Bearer <agent-token>` on the bare roots.
-  A secret-bearing path form (`/claude/<token>`) exists only for clients that
-  cannot set headers.
+  The secret-bearing path form (`/claude/<token>`) is disabled by default and
+  exists only as an explicit `allowUrlTokens` compatibility opt-in for clients
+  that cannot set headers.
 - Control WebSocket: `/control`, authenticated with `X-Duet-Control-Token`.
 
 `config/duet.secrets.json` is generated locally, never committed, and contains
@@ -136,6 +137,13 @@ Duet.app terminates the Hub. Files and the index are written `0600`.
 **Persistence is a convenience, not a precondition.** If the data directory is
 unwritable, history disables itself, reports a reason, and the Hub keeps
 running with an in-memory transcript.
+
+The current retention policy is intentionally simple: keep history until the
+user removes it, with `0600` files and an explicit `DUET_DATA_DIR` escape hatch.
+The `SessionStore` root directory is the storage boundary for a future policy
+that can offer forever, 30-day, 7-day, no-persist, or private-memory modes.
+Automatic deletion is not shipped yet; it needs a config/UI contract and
+migration tests before changing existing users' history.
 
 ### Security properties
 

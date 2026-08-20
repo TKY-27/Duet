@@ -95,6 +95,7 @@ export function createDuetExpressApp(state: DuetState, config: DuetConfig): Duet
       holdSec: snapshot.holdSec,
       noProgressHoldSec: snapshot.noProgressHoldSec,
       progressIntervalSec: snapshot.progressIntervalSec,
+      allowUrlTokens: config.allowUrlTokens,
       roles: {
         claude: snapshot.roles.claude.role,
         codex: snapshot.roles.codex.role,
@@ -133,7 +134,7 @@ function attachMcpEndpoint(
   });
 
   const serve = async (request: Request, response: Response): Promise<void> => {
-    const denial = validateMcpToken(readMcpToken(request), agentId, config);
+    const denial = validateMcpToken(readMcpToken(request, config.allowUrlTokens), agentId, config);
     if (denial) {
       sendJsonRpcError(response, denial.status, denial.message);
       return;
@@ -141,13 +142,23 @@ function attachMcpEndpoint(
     await nodeHandler(request, response, request.body);
   };
 
-  for (const path of [route, `${route}/:token`]) {
+  for (const path of [route]) {
     app.post(path, serve);
     app.get(path, serve);
     app.delete(path, serve);
   }
+  const tokenRoute = `${route}/:token`;
+  if (config.allowUrlTokens) {
+    app.post(tokenRoute, serve);
+    app.get(tokenRoute, serve);
+    app.delete(tokenRoute, serve);
+  } else {
+    app.all(tokenRoute, (_request, response) => {
+      response.status(401).send(mcpAuthMessage(route, config.allowUrlTokens));
+    });
+  }
   app.all(route, (_request, response) => {
-    response.status(401).send(mcpAuthMessage(route));
+    response.status(401).send(mcpAuthMessage(route, config.allowUrlTokens));
   });
 
   return handler;
@@ -158,8 +169,8 @@ function readRouteToken(request: Request): string | undefined {
   return typeof token === "string" ? token : undefined;
 }
 
-function readMcpToken(request: Request): string | undefined {
-  return readRouteToken(request) ?? readBearerToken(request);
+function readMcpToken(request: Request, allowUrlTokens: boolean): string | undefined {
+  return (allowUrlTokens ? readRouteToken(request) : undefined) ?? readBearerToken(request);
 }
 
 function readBearerToken(request: Request): string | undefined {
@@ -170,8 +181,11 @@ function readBearerToken(request: Request): string | undefined {
   return token;
 }
 
-function mcpAuthMessage(route: string): string {
-  return `MCP endpoint requires a per-agent token. Use Authorization: Bearer <token> on ${route}, or ${route}/<token> if your MCP client cannot set headers.`;
+function mcpAuthMessage(route: string, allowUrlTokens: boolean): string {
+  const fallback = allowUrlTokens
+    ? `, or ${route}/<token> if your MCP client cannot set headers`
+    : "; URL token fallback is disabled by default; enable allowUrlTokens only for a reviewed legacy-client exception";
+  return `MCP endpoint requires a per-agent token. Use Authorization: Bearer <token> on ${route}${fallback}.`;
 }
 
 function sendJsonRpcError(response: Response, status: number, message: string): void {

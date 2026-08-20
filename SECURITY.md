@@ -40,3 +40,7 @@ Maintainers should acknowledge private reports before asking for more detail in 
   Git worktree and may not be `/`, `$HOME`, the project root, or sensitive system/home
   directories. Enabling this flag lets the agents operate on arbitrary paths — only use it
   for a path you have personally vetted.
+- **`allowUrlTokens` is disabled by default.** Enabling it puts an agent's bearer token in
+  the request path, where local logs, screenshots, copied configuration, and shell history
+  can retain it. Use the normal header-based registration unless a reviewed legacy-client
+  exception is necessary.

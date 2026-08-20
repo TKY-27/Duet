@@ -85,6 +85,12 @@ cp config/duet.config.example.json config/duet.config.json
 [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) に記録された Phase 0 の実測経路に
 基づいています。
 
+`allowUrlTokens` の既定値は `false` です。MCP トークンを URL に含めるとログ、
+スクリーンショット、コピーした設定、シェル履歴に漏れる可能性があるため、
+無効のままにしてください。bearer ヘッダを送れないレガシークライアントを
+レビュー済みの例外として使う場合だけ有効化します。通常の Setup フローは
+常にヘッダ方式の登録コマンドを生成します。
+
 ハブは既定でループバックにバインドされます。認証とネットワーク公開の計画を
 レビュー済みでない限り、ループバック以外の `host` は使わないでください。
 Node が標準的な絶対パスに無い場合は `DUET_NODE_PATH` を設定してください。
@@ -126,10 +132,11 @@ export DUET_CODEX_MCP_TOKEN="<codex-token>"
 codex mcp add duet --url http://127.0.0.1:8765/codex --bearer-token-env-var DUET_CODEX_MCP_TOKEN
 ```
 
-ヘッダを設定できないクライアントのためだけに、トークンを URL に埋め込む形式
-(`http://127.0.0.1:8765/claude/<token>`) もあります。URL はログ・
-スクリーンショット・コピーされた設定・シェル履歴に残りやすいため、可能な限り
-ヘッダを使ってください。
+ヘッダを設定できないレガシークライアントを使う場合だけ、ローカル設定で
+`allowUrlTokens` を `true` にしてから、トークンを URL に埋め込む形式
+(`http://127.0.0.1:8765/claude/<token>`) を使えます。この互換経路は既定で
+無効です。URL はログ・スクリーンショット・コピーされた設定・シェル履歴に
+残りやすいため、ヘッダ方式を優先してください。
 
 `DUET_CONTROL_TOKEN` は MCP トークンとは別物で、Duet.app が起動ごとに生成し
 `/control` の認証にのみ使います。
