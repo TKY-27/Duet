@@ -25,7 +25,7 @@ Last generated: 2026-08-20.
 
 | License | Package count |
 | --- | ---: |
-| MIT | 98 |
+| MIT | 99 |
 | Apache-2.0 | 21 |
 | ISC | 7 |
 | BSD-3-Clause | 2 |
@@ -55,7 +55,7 @@ Non-MIT locked packages:
 | `@typescript/typescript-sunos-x64` | 7.0.2 | Apache-2.0 |
 | `@typescript/typescript-win32-arm64` | 7.0.2 | Apache-2.0 |
 | `@typescript/typescript-win32-x64` | 7.0.2 | Apache-2.0 |
-| `fast-uri` | 3.1.2 | BSD-3-Clause |
+| `fast-uri` | 3.1.5 | BSD-3-Clause |
 | `inherits` | 2.0.4 | ISC |
 | `isexe` | 2.0.0 | ISC |
 | `json-schema-typed` | 8.0.2 | BSD-2-Clause |
@@ -71,7 +71,7 @@ Non-MIT locked packages:
 
 | Package | Version | License |
 | --- | --- | --- |
-| `@hono/node-server` | 1.19.14 | MIT |
+| `@hono/node-server` | 2.1.1 | MIT |
 | `@modelcontextprotocol/client` | 2.0.0 | MIT |
 | `@modelcontextprotocol/core` | 2.0.0 | MIT |
 | `@modelcontextprotocol/sdk` | 1.30.0 | MIT |
@@ -110,11 +110,12 @@ Non-MIT locked packages:
 | `accepts` | 2.0.0 | MIT |
 | `ajv` | 8.20.0 | MIT |
 | `ajv-formats` | 3.0.1 | MIT |
-| `body-parser` | 2.2.2 | MIT |
+| `body-parser` | 2.3.0 | MIT |
 | `bytes` | 3.1.2 | MIT |
 | `call-bind-apply-helpers` | 1.0.2 | MIT |
 | `call-bound` | 1.0.4 | MIT |
 | `content-disposition` | 1.1.0 | MIT |
+| `content-type` | 2.1.0 | MIT |
 | `content-type` | 1.0.5 | MIT |
 | `content-type` | 2.0.0 | MIT |
 | `cookie` | 0.7.2 | MIT |
@@ -136,7 +137,7 @@ Non-MIT locked packages:
 | `express` | 5.2.1 | MIT |
 | `express-rate-limit` | 8.5.2 | MIT |
 | `fast-deep-equal` | 3.1.3 | MIT |
-| `fast-uri` | 3.1.2 | BSD-3-Clause |
+| `fast-uri` | 3.1.5 | BSD-3-Clause |
 | `finalhandler` | 2.1.1 | MIT |
 | `forwarded` | 0.2.0 | MIT |
 | `fresh` | 2.0.0 | MIT |
@@ -150,7 +151,7 @@ Non-MIT locked packages:
 | `http-errors` | 2.0.1 | MIT |
 | `iconv-lite` | 0.7.2 | MIT |
 | `inherits` | 2.0.4 | ISC |
-| `ip-address` | 10.2.0 | MIT |
+| `ip-address` | 10.5.0 | MIT |
 | `ipaddr.js` | 1.9.1 | MIT |
 | `is-promise` | 4.0.0 | MIT |
 | `isexe` | 2.0.0 | ISC |
