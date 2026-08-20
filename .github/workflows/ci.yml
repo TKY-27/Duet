@@ -23,15 +23,14 @@ jobs:
           cache-dependency-path: hub/package-lock.json
       - run: npm ci
         working-directory: hub
-      # Gate on high and critical advisories. A plain `npm audit` fails on any
-      # advisory in any transitive dependency, which made this step permanently
-      # red and therefore ignored; `npm run audit:report` prints the full list
-      # for review without failing the build.
+      # Keep a high/critical production gate and a second report for all
+      # dependency advisories. Both are intentionally strict: a newly
+      # discovered advisory must be fixed or explicitly reviewed in the PR,
+      # never hidden by a non-gating audit step.
       - run: npm audit --omit=dev --audit-level=high
         working-directory: hub
       - run: npm run audit:report
         working-directory: hub
-        continue-on-error: true
       - run: npm run license:check
         working-directory: hub
       - run: npm test

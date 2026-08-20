@@ -26,7 +26,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "audit:report": "npm audit --omit=dev",
+    "audit:report": "npm audit",
     "build": "tsc -p tsconfig.json",
     "license:check": "node scripts/check-license-inventory.mjs",
     "license:generate": "node scripts/generate-license-inventory.mjs",
