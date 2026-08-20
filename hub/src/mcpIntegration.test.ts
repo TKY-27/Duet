@@ -34,6 +34,7 @@ const config: DuetConfig = {
   controlToken: "test-control-token-000000000000000",
   allowNonLoopbackHost: false,
   allowUnsafeRepoPath: false,
+  allowUrlTokens: true,
   maxTranscriptMessages: 300,
   maxQueueMessages: 100,
   maxWaitersPerAgent: 20,
@@ -373,6 +374,7 @@ test("unauthenticated MCP requests are rejected and health details require contr
     const detailsPayload = (await details.json()) as Record<string, unknown>;
     assert.equal(detailsPayload.service, "duet-hub");
     assert.equal(detailsPayload.running, true);
+    assert.equal(detailsPayload.allowUrlTokens, true);
 
     const deniedSetup = await fetch(`${hub.baseUrl}/setup`);
     assert.equal(deniedSetup.status, 401);
@@ -386,6 +388,18 @@ test("unauthenticated MCP requests are rejected and health details require contr
     assert.match(String(setupPayload.codexCommand), /codex mcp add duet/);
     assert.ok(String(setupPayload.claudeCommand).includes(config.mcpTokens.claude));
     assert.ok(String(setupPayload.codexCommand).includes(config.mcpTokens.codex));
+  } finally {
+    await hub.stop();
+  }
+});
+
+test("secret-bearing URL paths are rejected unless explicitly enabled", async () => {
+  const hub = await startHub({ allowUrlTokens: false });
+
+  try {
+    const response = await fetch(`${hub.baseUrl}/claude/${config.mcpTokens.claude}`, { method: "POST" });
+    assert.equal(response.status, 401);
+    assert.match(await response.text(), /URL token fallback is disabled by default/);
   } finally {
     await hub.stop();
   }

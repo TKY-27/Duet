@@ -8,6 +8,7 @@
   "stallThresholdSec": 120,
   "presenceTtlSec": 90,
   "repoPollIntervalSec": 10,
+  "allowUrlTokens": false,
   "maxTranscriptMessages": 300,
   "maxQueueMessages": 100,
   "maxWaitersPerAgent": 20,

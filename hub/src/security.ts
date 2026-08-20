@@ -44,7 +44,9 @@ export function validateMcpToken(
   if (!actual || !tokensMatch(actual, config.mcpTokens[agentId])) {
     return {
       status: 401,
-      message: `MCP endpoint requires a per-agent token. Prefer Authorization: Bearer <token>; use /${agentId}/<token> only if your MCP client cannot set headers.`,
+      message: config.allowUrlTokens
+        ? `MCP endpoint requires a per-agent token. Prefer Authorization: Bearer <token>; use /${agentId}/<token> only if your MCP client cannot set headers.`
+        : "MCP endpoint requires Authorization: Bearer <token>; URL token fallback is disabled by default.",
     };
   }
   return undefined;

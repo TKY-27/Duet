@@ -28,6 +28,7 @@ const config: DuetConfig = {
   controlToken: "test-control-token-000000000000000",
   allowNonLoopbackHost: false,
   allowUnsafeRepoPath: false,
+  allowUrlTokens: false,
   maxTranscriptMessages: 300,
   maxQueueMessages: 100,
   maxWaitersPerAgent: 20,

@@ -89,6 +89,11 @@ The values below match the conservative defaults the Hub ships with (`holdSec` 5
 `noProgressHoldSec` applies when it does not. The values above come from the
 Phase 0 measurement path recorded in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
+`allowUrlTokens` defaults to `false`. Keep it disabled: MCP tokens in URLs can
+leak through logs, screenshots, copied configuration, and shell history. Enable
+it only as a reviewed exception for a legacy client that cannot send bearer
+headers; the normal Setup flow always generates header-based registration.
+
 The hub binds to loopback by default. Do not set a non-loopback `host` without
 a reviewed authentication and network-exposure plan. If Node is not on a
 standard absolute path, set `DUET_NODE_PATH` before launching.
@@ -130,9 +135,11 @@ export DUET_CODEX_MCP_TOKEN="<codex-token>"
 codex mcp add duet --url http://127.0.0.1:8765/codex --bearer-token-env-var DUET_CODEX_MCP_TOKEN
 ```
 
-If a client cannot set MCP headers, a secret-bearing URL form
-(`http://127.0.0.1:8765/claude/<token>`) exists for that client only. Prefer
-headers: URLs end up in logs, screenshots, copied configs, and shell history.
+If a legacy client cannot set MCP headers, set `allowUrlTokens` to `true` in the
+local config before using the secret-bearing URL form
+(`http://127.0.0.1:8765/claude/<token>`). This compatibility path is disabled by
+default because URLs end up in logs, screenshots, copied configs, and shell
+history. Prefer headers.
 
 `DUET_CONTROL_TOKEN` is separate from the MCP tokens. Duet.app generates it per
 run for `/control` authentication only.
@@ -207,6 +214,7 @@ Report vulnerabilities per [SECURITY.md](SECURITY.md).
 - [docs/DESIGN.md](docs/DESIGN.md) — interface principles and what they replaced
 - [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) — machine measurements behind the timing and automation decisions
 - [docs/RELEASE_PACKAGING.md](docs/RELEASE_PACKAGING.md) — packaging notes
+- [docs/UI_VERIFICATION.md](docs/UI_VERIFICATION.md) — manual UI verification checklist
 - [CONTRIBUTING.md](CONTRIBUTING.md) — local checks and house rules
 - [CHANGELOG.md](CHANGELOG.md)
 

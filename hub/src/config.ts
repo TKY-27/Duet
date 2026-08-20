@@ -20,6 +20,7 @@ const RawConfigSchema = z
     repoPath: z.string().trim().min(1).optional(),
     allowNonLoopbackHost: z.boolean().default(false),
     allowUnsafeRepoPath: z.boolean().default(false),
+    allowUrlTokens: z.boolean().default(false),
     roles: z
       .object({
         claude: RoleAssignmentSchema,
@@ -105,6 +106,7 @@ export function loadConfig(argv: readonly string[] = process.argv.slice(2)): Due
     controlToken: readControlToken(),
     allowNonLoopbackHost: parsed.allowNonLoopbackHost,
     allowUnsafeRepoPath: parsed.allowUnsafeRepoPath,
+    allowUrlTokens: parsed.allowUrlTokens,
     maxTranscriptMessages: parsed.maxTranscriptMessages,
     maxQueueMessages: parsed.maxQueueMessages,
     maxWaitersPerAgent: parsed.maxWaitersPerAgent,
