@@ -1,17 +1,21 @@
 # Third-Party License Inventory
 
-This inventory is generated from `hub/package-lock.json` for the Hub npm dependency tree. The SwiftPM app currently declares no third-party package dependencies.
+This inventory is generated from `hub/package-lock.json` by `npm run license:generate`
+and verified in CI by `npm run license:check`. Do not edit it by hand.
+The SwiftPM app declares no third-party package dependencies.
 
-Last reviewed: 2026-06-02.
+Last generated: 2026-08-16.
 
 ## Direct Hub Dependencies
 
 | Package | Version | Scope | License |
 | --- | --- | --- | --- |
-| `@modelcontextprotocol/sdk` | 1.29.0 | runtime | MIT |
+| `@modelcontextprotocol/server` | 2.0.0 | runtime | MIT |
 | `express` | 5.2.1 | runtime | MIT |
 | `ws` | 8.21.0 | runtime | MIT |
 | `zod` | 4.4.3 | runtime | MIT |
+| `@modelcontextprotocol/client` | 2.0.0 | development | MIT |
+| `@modelcontextprotocol/sdk` | 1.30.0 | development | MIT |
 | `@types/express` | 5.0.6 | development | MIT |
 | `@types/node` | 25.9.1 | development | MIT |
 | `@types/ws` | 8.18.1 | development | MIT |
@@ -21,11 +25,11 @@ Last reviewed: 2026-06-02.
 
 | License | Package count |
 | --- | ---: |
-| MIT | 95 |
+| MIT | 98 |
 | ISC | 7 |
 | BSD-3-Clause | 2 |
-| BSD-2-Clause | 1 |
 | Apache-2.0 | 1 |
+| BSD-2-Clause | 1 |
 
 Non-MIT locked packages:
 
@@ -48,7 +52,10 @@ Non-MIT locked packages:
 | Package | Version | License |
 | --- | --- | --- |
 | `@hono/node-server` | 1.19.14 | MIT |
-| `@modelcontextprotocol/sdk` | 1.29.0 | MIT |
+| `@modelcontextprotocol/client` | 2.0.0 | MIT |
+| `@modelcontextprotocol/core` | 2.0.0 | MIT |
+| `@modelcontextprotocol/sdk` | 1.30.0 | MIT |
+| `@modelcontextprotocol/server` | 2.0.0 | MIT |
 | `@types/body-parser` | 1.19.6 | MIT |
 | `@types/connect` | 3.4.38 | MIT |
 | `@types/express` | 5.0.6 | MIT |
@@ -69,6 +76,7 @@ Non-MIT locked packages:
 | `call-bound` | 1.0.4 | MIT |
 | `content-disposition` | 1.1.0 | MIT |
 | `content-type` | 1.0.5 | MIT |
+| `content-type` | 2.0.0 | MIT |
 | `cookie` | 0.7.2 | MIT |
 | `cookie-signature` | 1.2.2 | MIT |
 | `cors` | 2.8.6 | MIT |
@@ -143,11 +151,10 @@ Non-MIT locked packages:
 | `statuses` | 2.0.2 | MIT |
 | `toidentifier` | 1.0.1 | MIT |
 | `type-is` | 2.1.0 | MIT |
-| `type-is/node_modules/content-type` | 2.0.0 | MIT |
 | `typescript` | 6.0.3 | Apache-2.0 |
 | `undici-types` | 7.24.6 | MIT |
 | `unpipe` | 1.0.0 | MIT |
-| `vary` | 1.1.1 | MIT |
+| `vary` | 1.1.2 | MIT |
 | `which` | 2.0.2 | ISC |
 | `wrappy` | 1.0.2 | ISC |
 | `ws` | 8.21.0 | MIT |

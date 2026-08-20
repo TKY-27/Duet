@@ -437,4 +437,203 @@ enum L10n {
         case .english: "\(agent) task must be \(max) characters or fewer."
         }
     }
+
+    // MARK: - Transcript states
+    //
+    // Each empty state names the situation the user is actually in and what to
+    // do next. One generic "no messages" line for every case is exactly the
+    // unhappy-path gap this redesign set out to close.
+
+    static func toHuman(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "→ 人間へ"
+        case .english: "to human"
+        }
+    }
+
+    static func emptyLogDetail(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "エージェントが調整メッセージを送るとここに流れます。"
+        case .english: "Coordination messages appear here as the agents exchange them."
+        }
+    }
+
+    static func emptyDisconnectedTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Hub に接続していません"
+        case .english: "Not connected to the Hub"
+        }
+    }
+
+    static func emptyDisconnectedDetail(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Hub が起動していないか、接続に失敗しています。⌘⇧R で再接続できます。"
+        case .english: "The Hub is not running or the connection failed. Press ⌘⇧R to reconnect."
+        }
+    }
+
+    static func emptyStoppedTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "ルームは停止中です"
+        case .english: "The room is stopped"
+        }
+    }
+
+    static func emptyStoppedDetail(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "ツールバーの開始を押すと、エージェントのメッセージを受け付けます。"
+        case .english: "Press Start in the toolbar to begin accepting agent messages."
+        }
+    }
+
+    static func emptyNoAgentsTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "エージェントがまだ接続していません"
+        case .english: "No agent has connected yet"
+        }
+    }
+
+    static func emptyNoAgentsDetail(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Claude Code と Codex に Duet の MCP を登録し、プロンプトを貼り付けてください。接続すると右のインスペクタが緑になります。"
+        case .english: "Register Duet's MCP endpoints in Claude Code and Codex, then paste the prompts. The inspector turns green once they connect."
+        }
+    }
+
+    // MARK: - Inspector
+
+    static func repository(_ language: AppLanguage, changedFiles: Int) -> String {
+        switch language {
+        case .japanese: "変更 \(changedFiles) ファイル"
+        case .english: changedFiles == 1 ? "1 changed file" : "\(changedFiles) changed files"
+        }
+    }
+
+    static func repoUnavailable(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "Git 情報を取得できません"
+        case .english: "Git status unavailable"
+        }
+    }
+
+    static func agents(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "エージェント"
+        case .english: "Agents"
+        }
+    }
+
+    static func connected(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "接続済み"
+        case .english: "Connected"
+        }
+    }
+
+    static func notConnected(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "未接続"
+        case .english: "Not connected"
+        }
+    }
+
+    static func diagnostics(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "診断"
+        case .english: "Diagnostics"
+        }
+    }
+
+    // MARK: - Sessions
+
+    static func sessions(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "セッション"
+        case .english: "Sessions"
+        }
+    }
+
+    static func liveSession(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "実行中のセッション"
+        case .english: "Live session"
+        }
+    }
+
+    static func newSession(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "新しいセッション"
+        case .english: "New Session"
+        }
+    }
+
+    static func archivedBannerTitle(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "過去のセッションを表示しています"
+        case .english: "Viewing an archived session"
+        }
+    }
+
+    static func backToLive(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "実行中に戻る"
+        case .english: "Back to Live"
+        }
+    }
+
+    static func messageCount(_ language: AppLanguage, count: Int) -> String {
+        switch language {
+        case .japanese: "\(count) 件"
+        case .english: count == 1 ? "1 message" : "\(count) messages"
+        }
+    }
+
+    static func noSessions(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "まだ記録がありません"
+        case .english: "No sessions recorded yet"
+        }
+    }
+
+    static func toggleInspector(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "インスペクタを表示"
+        case .english: "Toggle Inspector"
+        }
+    }
+
+    static func humanShort(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "人間"
+        case .english: "human"
+        }
+    }
+
+    static func noSearchResults(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "該当するメッセージがありません"
+        case .english: "No matching messages"
+        }
+    }
+
+    static func noSearchResultsDetail(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "検索語を変えるか、送信者フィルタを解除してください。"
+        case .english: "Try a different search, or clear the sender filter."
+        }
+    }
+
+    static func filter(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "送信者で絞り込む"
+        case .english: "Filter by sender"
+        }
+    }
+
+    static func clearFilter(_ language: AppLanguage) -> String {
+        switch language {
+        case .japanese: "絞り込みを解除"
+        case .english: "Clear filter"
+        }
+    }
 }

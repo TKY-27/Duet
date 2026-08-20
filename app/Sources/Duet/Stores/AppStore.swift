@@ -17,7 +17,14 @@ final class AppStore: ObservableObject {
     @Published var progressIntervalSec = 20
     @Published var stallThresholdSec = 120
     @Published var stalls = AgentStalls.normal
-    @Published var theme: DuetTheme = .light
+    @Published var presence = AgentPresences.unseen
+    @Published var repo = RepoStatus.unavailable
+    @Published var sessions: [SessionSummary] = []
+    @Published var currentSessionId: String?
+    /// Non-nil while the user is reading an archived session instead of the
+    /// live one; the transcript view reads this in preference to `transcript`.
+    @Published var viewingSessionId: String?
+    @Published var viewingTranscript: [BusMessage] = []
     @Published var lastError: String?
     @Published private(set) var hubOutput = HubProcessOutput.empty
 
@@ -48,8 +55,22 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// The branch the shared repository is actually on, as reported by the Hub.
+    /// Empty when Git could not be read, so callers can hide the strip instead
+    /// of showing a placeholder that looks like real data.
     var branchLabel: String {
-        branch.isEmpty ? "—" : branch
+        if repo.available, !repo.branch.isEmpty { return repo.branch }
+        return branch
+    }
+
+    /// The transcript the user is currently looking at: an archived session
+    /// when one is open, otherwise the live one.
+    var visibleTranscript: [BusMessage] {
+        viewingSessionId == nil ? transcript : viewingTranscript
+    }
+
+    var isViewingArchivedSession: Bool {
+        viewingSessionId != nil
     }
 
     func start() {
@@ -121,6 +142,49 @@ final class AppStore: ObservableObject {
     @discardableResult
     func inject(message: String, to recipient: Recipient) async -> Bool {
         await sendCommand(InjectHumanCommand(to: recipient, message: message))
+    }
+
+    @discardableResult
+    func refreshSessions() async -> Bool {
+        await sendCommand(SimpleCommand(type: "listSessions"))
+    }
+
+    @discardableResult
+    func refreshRepo() async -> Bool {
+        await sendCommand(SimpleCommand(type: "refreshRepo"))
+    }
+
+    /// Starts a new session. The live transcript resets, so leave any archived
+    /// session the user was reading first.
+    @discardableResult
+    func startNewSession() async -> Bool {
+        guard await sendCommand(SimpleCommand(type: "newSession")) else { return false }
+        showLiveSession()
+        transcript = []
+        return true
+    }
+
+    /// Opens an archived session read-only. The Hub answers with a
+    /// `sessionTranscript` event, which `apply(_:)` accepts only while this
+    /// session is still the one being viewed.
+    @discardableResult
+    func openSession(_ sessionId: String) async -> Bool {
+        guard sessionId != currentSessionId else {
+            showLiveSession()
+            return true
+        }
+        viewingSessionId = sessionId
+        viewingTranscript = []
+        guard await sendCommand(LoadSessionCommand(sessionId: sessionId)) else {
+            showLiveSession()
+            return false
+        }
+        return true
+    }
+
+    func showLiveSession() {
+        viewingSessionId = nil
+        viewingTranscript = []
     }
 
     func exportData(format: TranscriptExporter.Format, language: AppLanguage) -> Data? {
@@ -269,6 +333,8 @@ final class AppStore: ObservableObject {
             progressIntervalSec = snapshot.progressIntervalSec
             stallThresholdSec = snapshot.stallThresholdSec
             stalls = snapshot.stalls
+            presence = snapshot.presence
+            repo = snapshot.repo
             lastError = nil
         case .message(let message):
             appendMessage(message)
@@ -281,6 +347,18 @@ final class AppStore: ObservableObject {
             }
         case .stall(let agent, let stalled, let sinceMs):
             stalls[agent] = AgentStall(stalled: stalled, sinceMs: sinceMs)
+        case .presence(let agent, let agentPresence):
+            presence[agent] = agentPresence
+        case .repo(let repoStatus):
+            repo = repoStatus
+        case .sessions(let summaries, let activeSessionId):
+            sessions = summaries
+            currentSessionId = activeSessionId
+        case .sessionTranscript(let sessionId, let sessionTranscript):
+            // Ignore a transcript for a session the user has already navigated
+            // away from, so a slow reply cannot overwrite the current view.
+            guard viewingSessionId == sessionId else { return }
+            viewingTranscript = sessionTranscript
         case .error(let message):
             lastError = redact(message)
         }

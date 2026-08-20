@@ -1,10 +1,17 @@
 # Duet Current Specification
 
-This is the current canonical specification for product and implementation details. If this file conflicts with `AGENTS.md` or `CLAUDE.md`, this file wins for product and implementation details. `AGENTS.md` and `CLAUDE.md` govern agent behavior and repository working rules.
+This is the canonical specification for product and implementation details. If
+this file conflicts with `AGENTS.md` or `CLAUDE.md`, this file wins for product
+and implementation details; those files govern agent behaviour and repository
+working rules. Interface decisions live in `docs/DESIGN.md`. Machine
+measurements live in `docs/MEASUREMENTS.md`.
 
 ## Product
 
-Duet is a macOS-only SwiftUI app plus a local TypeScript Hub. The app is what users launch. It starts and monitors the Hub, renders a live two-agent transcript, lets the human assign roles, and injects human messages into the agent queues.
+Duet is a macOS-only SwiftUI app plus a local TypeScript Hub. The app is what
+users launch. It starts and monitors the Hub, renders a live two-agent
+transcript, lets the human assign roles, and injects human messages into the
+agent queues.
 
 The two agents are official desktop products:
 
@@ -18,223 +25,167 @@ The agent runtimes are not modified and are not replaced by a CLI or SDK.
 - Code is never transported over MCP messages, chat, or OCR.
 - Agents share a repository on disk and read/write real files with their own file tools.
 - Duet messages are short natural-language coordination messages.
-- The Hub is one streamable HTTP process. Do not use stdio MCP because each client would start a separate process and state would not be shared.
-- OCR is an insurance layer for screen-ground-truth, not the primary output channel.
+- The Hub is one streamable HTTP process. Do not use stdio MCP: each client
+  would start a separate process and state would not be shared.
+- OCR is an insurance layer for screen ground truth, not the primary output channel.
 - macOS is the only target.
 
-## Phase 1 Hub
+## Protocol Revision
 
-The Hub is a strict TypeScript Node service with:
+The Hub is built on `@modelcontextprotocol/server` v2 and serves **both**
+protocol eras from the same endpoints:
+
+- **2026-07-28** (current revision): stateless, no `initialize` handshake, no
+  `Mcp-Session-Id`, `server/discover` for version selection.
+- **2025-era**: served through `createMcpHandler`'s `legacy: "stateless"` mode,
+  which answers each legacy request from a fresh server built by the same
+  factory.
+
+This dual-era support is not an assumption. `hub/src/mcpIntegration.test.ts`
+connects a 2025-era client and a client pinned to `2026-07-28`, exercises a
+round trip on each, and asserts that a modern sender reaches a legacy waiter
+across the same bus. If that pinned test ever fails, the modern path has
+regressed — it must not be "fixed" by removing the pin.
+
+Deprecated in 2026-07-28 and therefore not used: Logging (Hub diagnostics go to
+stderr), Sampling, and Roots. The Tasks extension is not yet usable as an
+`await_reply` replacement; the v2 SDK excludes task methods from its typed
+method maps.
+
+## Hub
 
 - `GET /health` returns only `{ ok, service }` without authentication.
 - `GET /health/details` returns detailed state and requires `X-Duet-Control-Token`.
-- streamable HTTP MCP endpoint roots:
-  - `/claude`
-  - `/codex`
-- production registration should use `Authorization: Bearer <agent-token>` on the bare endpoint roots when the MCP client supports custom headers:
-  - Claude Code: register HTTP directly with
-    `claude mcp add-json duet '{"type":"http","url":"http://127.0.0.1:8765/claude","headers":{"Authorization":"Bearer <token>"}}' -s user`
-  - Codex: register `~/.codex/config.toml` with `[mcp_servers.duet]`, `url = "http://127.0.0.1:8765/codex"`, and
-    `bearer_token_env_var = "DUET_CODEX_MCP_TOKEN"`
-- Claude Desktop connector UI and `claude_desktop_config.json` remote-URL shapes are not the normal local Duet registration path.
-- fallback registration uses per-agent secret-bearing endpoint URLs derived from `config/duet.secrets.json` only when the client cannot set headers:
-  - Claude: `/claude/<claude-mcp-token>`
-  - Codex: `/codex/<codex-mcp-token>`
-- control WebSocket:
-  - `/control`
+- MCP endpoint roots: `/claude` and `/codex`.
+- Registration uses `Authorization: Bearer <agent-token>` on the bare roots.
+  A secret-bearing path form (`/claude/<token>`) exists only for clients that
+  cannot set headers.
+- Control WebSocket: `/control`, authenticated with `X-Duet-Control-Token`.
 
-`config/duet.secrets.json` is generated locally, is never committed, and contains only random per-agent MCP tokens. Control WebSocket authentication is separate: Duet.app passes an ephemeral `DUET_CONTROL_TOKEN` to the Hub process and then connects to `/control` with `X-Duet-Control-Token`.
+`config/duet.secrets.json` is generated locally, never committed, and contains
+only random per-agent MCP tokens. Control authentication is separate: Duet.app
+passes an ephemeral `DUET_CONTROL_TOKEN` to the Hub process.
 
-State is process-local:
-
-- per-agent queues
-- roles and tasks
-- transcript
-- pending `await_reply` waiters
-- running/stopped status for GUI display
-- per-agent last activity timestamps and stall observation state
-
-Tools:
+### Tools
 
 - `get_briefing()`: returns `agentId`, `role`, `peer`, `task`, `repoPath`, and protocol notes.
-- `send({ message, to? })`: enqueues one natural-language message to the peer by default. `to:"human"` appends an
-  agent-to-human transcript event for the GUI and does not resolve any `await_reply`.
-- `await_reply({ holdSec? })`: waits for a peer or human message, returns `empty` on timeout, and sends progress notifications when a progress token is present.
+- `send({ message, to? })`: enqueues one natural-language message to the peer.
+  `to: "human"` appends an agent-to-human transcript event and does not resolve
+  any `await_reply`.
+- `await_reply({ holdSec? })`: holds for a peer or human message, returns
+  `empty` on timeout, and sends `notifications/progress` while holding when the
+  client supplied a progress token.
 
-Security properties:
+A progress token is `string | number`. **`0` and `""` are valid tokens**: the
+hold decision tests for presence, never truthiness. The 2026-07-28 SDK client
+numbers progress tokens from `0`, and a truthiness check there silently
+collapses every hold to `noProgressHoldSec`. This is covered by a regression
+test that sends `_meta.progressToken = 0` directly.
 
-- bind to loopback by default
-- reject non-loopback `Host` and `Origin` values unless explicitly opted in for a reviewed test setup
-- cap queue, waiter, transcript, transport, payload, control connection, and request rates
-- do not put source code, secrets, API keys, personal data, or raw repository contents into MCP coordination messages, role text, task text, logs, or verbose events
-- keep repository work inside `repoPath`; by default `repoPath` must resolve to an existing Git worktree and must not be root, home, system, sensitive home, or the Duet source checkout itself
+### State
 
-Control commands:
+Process-local: per-agent queues, roles and tasks, the in-memory transcript
+window, pending `await_reply` waiters, running/stopped status, and observation
+state (see below). Full history is on disk (see Sessions).
 
-- `setRoles`
-- `injectHuman`
-- `start`
-- `stop`
+### Observation
 
-Control events:
+`hub/src/presence.ts` answers two separate questions from one signal, the
+timestamp of each agent's last MCP tool call:
 
-- `snapshot`
-- `message`
-- `rolesUpdated`
-- `status`
-- `stall`
-- `error`
+- **presence** — has this agent ever reached the Hub, and recently enough to
+  still count as connected? Used by the setup flow to distinguish a
+  half-configured client from a working one. Evaluated whether or not the room
+  is running.
+- **stall** — is a *previously seen* agent silent while holding no
+  `await_reply`? That combination means it has fallen out of the waiting loop.
 
-Phase 4b stall observation is deliberately limited to measurement and GUI
-warning display. The Hub records each agent's last activity when that agent
-calls `await_reply`, sends with `send`, or receives a message through a resolved
-waiter. An agent is considered possibly stalled only when
-`now - lastActivityAt > stallThresholdSec` and that agent has no active
-`await_reply` waiter. The Hub emits a `stall` control event only when the
-per-agent state changes between normal and stalled, and snapshots include the
-current per-agent stall state for GUI reconnection. This phase does not open
-URLs, run AppleScript, type keystrokes, submit prompts, or otherwise wake
-external apps.
+An agent that has never contacted the Hub is reported **absent, not stalled**.
+The earlier implementation reported both agents as stalled 120 seconds after
+launch even when neither had ever connected, which produced a false warning on
+every fresh start.
 
-## Phase 2 SwiftUI App
+Observation is measurement only. Nothing here opens URLs, sends keystrokes, or
+wakes an external app.
 
-The app is a SwiftPM macOS executable target named `Duet`.
+### Repository status
+
+`hub/src/git.ts` reads the shared repository so the window can show what
+actually changed on disk. It is read-only and takes no input into Git
+arguments: every command is a fixed argument list, and `repoPath` — already
+validated as a Git worktree at config load — is used only as the working
+directory. Failures degrade the status strip rather than affecting the Hub.
+
+Reported: branch (or `detached`), short HEAD, ahead/behind, and changed files
+with added/removed line counts, capped at 200 files.
+
+### Sessions
+
+`hub/src/store.ts` records every message to an append-only JSONL file under
+`~/Library/Application Support/Duet/sessions/`, with a `sessions.json` index.
+`DUET_DATA_DIR` overrides the root.
+
+JSONL rather than SQLite: the write pattern is append-only, a session is a few
+hundred short messages, and a text file is readable, greppable, diffable, and
+exportable with no schema migration and no native module.
+
+Writes are synchronous. Coordination messages arrive at human speed, so the
+cost is irrelevant, and a buffered stream loses the final messages exactly when
+Duet.app terminates the Hub. Files and the index are written `0600`.
+
+**Persistence is a convenience, not a precondition.** If the data directory is
+unwritable, history disables itself, reports a reason, and the Hub keeps
+running with an in-memory transcript.
+
+### Security properties
+
+- Bind to loopback by default; reject non-loopback `Host`/`Origin` without explicit opt-in.
+- Cap queue, waiter, transcript, payload, control-connection, and request rates.
+- Keep source code, secrets, API keys, personal data, and raw repository
+  contents out of MCP messages, role text, task text, logs, and verbose events.
+- `repoPath` must resolve to an existing Git worktree and must not be root,
+  home, a system path, a sensitive home path, or the Duet checkout itself.
+- Session ids are server-minted UUIDs and are validated both at the control
+  schema and in the store, so a crafted id cannot read outside the sessions
+  directory.
+- `redactControlEvent` switches exhaustively over `ControlEvent` with no
+  `default`, so a new event variant fails the build rather than shipping
+  unredacted.
+
+### Control commands
+
+`setRoles`, `injectHuman`, `start`, `stop`, `listSessions`, `newSession`,
+`loadSession`, `refreshRepo`.
+
+### Control events
+
+`snapshot`, `message`, `rolesUpdated`, `status`, `stall`, `presence`, `repo`,
+`sessions`, `sessionTranscript`, `error`.
+
+## SwiftUI App
+
+A SwiftPM macOS executable target named `Duet`, targeting macOS 26.
 
 Responsibilities:
 
-- launch `node hub/dist/server.js`
-- stop the Hub process when the app exits
-- connect to `ws://127.0.0.1:8765/control` with the per-run control token in `X-Duet-Control-Token`
-- render the live transcript
-- update role/task assignments
-- inject human messages to Claude, Codex, or both
+- launch `node hub/dist/server.js` and stop it when the app exits
+- connect to `ws://127.0.0.1:<port>/control` with the per-run control token
+- render the live transcript, repository status, presence, and stalls
+- update role/task assignments and inject human messages
 - expose start/stop and connection state
+- guide first-time setup to a verified connection
 
-UI follows the existing Claude Design output:
-
-- compact macOS command-center window
-- left role/session panel
-- central transcript
-- bottom human injection bar
-- dark, light, and terminal themes
-
-## Phase 3 OCR Preconditions
-
-These values were measured on this machine on 2026-06-01 before implementing
-the OCR insurance layer. They are implementation preconditions, not proof that
-OCR capture quality or OCR accuracy is ready.
-
-Installed application paths were checked with:
-
-- `ls /Applications | grep -i -E "codex|claude"` -> `Claude.app`, `Codex.app`
-
-Bundle identifiers were measured from the installed application bundles:
-
-- `mdls -name kMDItemCFBundleIdentifier /Applications/Codex.app` ->
-  `com.openai.codex`
-- `mdls -name kMDItemCFBundleIdentifier /Applications/Claude.app` ->
-  `com.anthropic.claudefordesktop`
-
-The sandboxed `mdls` invocation reported the existing paths as not found, so the
-same `mdls` commands were rerun outside the sandbox. `plutil -extract
-CFBundleIdentifier raw .../Contents/Info.plist` returned the same identifiers.
-
-ScreenCaptureKit window enumeration was probed with a temporary Swift snippet
-under `tools/` that only called `SCShareableContent` and logged
-`SCWindow.owningApplication.bundleIdentifier`; it did not capture images, run
-Vision OCR, save screenshots, send messages, or update the GUI. The temporary
-probe file was not retained in the repository. The snippet was compiled with:
-
-- `swiftc -module-cache-path .build/module-cache -o
-  .build/scshareable-window-list tools/scshareable-window-list.swift`
-
-In this command execution context, `CGPreflightScreenCaptureAccess()` returned
-`false`, and the probe printed:
-
-- `screenCaptureAccess=false`
-- `SCShareableContent enumeration skipped: Screen Recording permission is not
-  granted for this executable context.`
-
-An earlier run without the preflight check produced no output and was stopped,
-which is consistent with a Screen Recording permission or TCC wait in this
-context. Because Screen Recording permission was not granted here,
-`SCShareableContent` has not yet confirmed live Codex or Claude windows by
-bundle identifier on this machine. Phase 3 must keep an explicit permission
-preflight path and rerun window enumeration after Screen Recording is granted to
-the executable context that performs OCR.
-
-As a fallback candidate only, a `CGWindowListCopyWindowInfo` plus
-`NSRunningApplication(processIdentifier:)` probe was also compiled and run
-without capture. In this same command execution context it returned
-`totalOnScreenWindowCount=0`, so it did not confirm Codex or Claude windows.
-If ScreenCaptureKit cannot identify windows by
-`owningApplication.bundleIdentifier` after permission is granted, the next
-fallback to evaluate is process-id mapping from ScreenCaptureKit or
-CoreGraphics window metadata to `NSRunningApplication`, then filtering by the
-measured bundle identifiers above.
-
-## Phase 4 Wakeup Preconditions
-
-These values were measured on this machine on 2026-06-02 before implementing
-any wake-up automation. They are implementation preconditions, not a shipped
-wake-up feature.
-
-Claude URL scheme registration:
-
-- `plutil -p /Applications/Claude.app/Contents/Info.plist | rg -n -C 8
-  "CFBundleURLTypes|CFBundleURLSchemes|claude|CFBundleIdentifier"` confirmed
-  `CFBundleIdentifier = "com.anthropic.claudefordesktop"` and
-  `CFBundleURLSchemes = ["claude"]`.
-- Launch Services also reported Claude as a handler for `claude:` through
-  `lsregister -dump | rg -n -C 4
-  "bindings:.*claude:|scheme: claude|claude://|com\\.anthropic\\.claudefordesktop|Claude\\.app"`.
-
-Claude prompt injection:
-
-- The tested command was
-  `/usr/bin/open 'claude://code/new?q=ping%20from%20duet%20wakeup%20test'`.
-- After opening Claude and recapturing the screen, the text
-  `ping from duet wakeup test` was present in the Claude Code input field.
-- It was not submitted automatically. The prompt remained a draft in the input
-  field, and no assistant response or running state appeared.
-- Therefore Phase 4 must treat Claude URL prompt injection as input-only on this
-  machine and must use an explicit Return/Enter completion step if it needs to
-  submit the prompt.
-- No Accessibility or Automation permission prompt appeared for opening the
-  `claude://` URL itself.
-- The exact tested URL form is `claude://code/new?q=<url-encoded-prompt>`.
-  Continuing an existing Claude Code session through a session-specific
-  `claude://` URL was not confirmed and must remain unknown until separately
-  measured or documented.
-
-Codex AppleScript prompt injection:
-
-- `osascript -e 'tell application "Codex" to activate' -e 'delay 1' -e
-  'tell application "System Events" to keystroke "ping from duet wakeup test"'`
-  activated Codex and typed into the active chat input field.
-- It did not submit automatically. The send arrow remained available, so
-  Return/Enter or an equivalent send action is required to submit.
-- In this Japanese input-source environment, direct `keystroke` text was
-  transformed by IME candidate handling and did not reliably preserve the exact
-  ASCII prompt. Phase 4 should not rely on direct text keystrokes for exact
-  prompt injection without first controlling the input source or using a
-  separately verified paste path.
-- `swift -e 'import ApplicationServices; print(AXIsProcessTrusted())'`
-  returned `true` in this command execution context, and the AppleScript command
-  succeeded without a new TCC prompt. Denied Accessibility or Automation
-  behavior was not measured and remains unknown.
-- A later `ping from duet wakeup test` shown as a sent Codex message followed
-  user interaction during the experiment interruption, so it is not evidence
-  that AppleScript injection alone submits the prompt.
+Interface structure and the reasoning behind it are in `docs/DESIGN.md`.
 
 ## Not Yet Complete
 
-These are intentionally outside the shipped Phase 1-2 implementation:
+Intentionally outside the shipped implementation:
 
 - ScreenCaptureKit + Vision OCR insurance layer
 - wake-up automation for stalled agents
-- session rollover
+- session rollover on context exhaustion
 - worktree orchestration
 - fully automated free-dialogue game flows
 
-They should be implemented in small reviewed phases and must preserve the hard rules above.
+They should be implemented in small reviewed phases and must preserve the hard
+rules above.

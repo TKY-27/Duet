@@ -143,11 +143,9 @@ create_verify_config() {
   "maxTranscriptMessages": 50,
   "maxQueueMessages": 20,
   "maxWaitersPerAgent": 5,
-  "maxTransports": 10,
   "maxControlPayloadBytes": 16384,
   "maxControlConnections": 2,
-  "maxRequestsPerMinute": 120,
-  "idleTransportTtlSec": 30
+  "maxRequestsPerMinute": 120
 }
 JSON
 }
