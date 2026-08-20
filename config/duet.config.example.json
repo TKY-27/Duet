@@ -2,14 +2,15 @@
   "host": "127.0.0.1",
   "port": 8765,
   "repoPath": "/ABSOLUTE/PATH/TO/SHARED/REPOSITORY",
-  "holdSec": 50,
-  "noProgressHoldSec": 25,
+  "holdSec": 180,
+  "noProgressHoldSec": 50,
   "progressIntervalSec": 20,
   "stallThresholdSec": 120,
+  "presenceTtlSec": 90,
+  "repoPollIntervalSec": 10,
   "maxTranscriptMessages": 300,
   "maxQueueMessages": 100,
   "maxWaitersPerAgent": 20,
-  "maxTransports": 40,
   "maxControlPayloadBytes": 16384,
   "roles": {
     "claude": {

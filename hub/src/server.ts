@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { createMcpHandler, type McpHttpHandler } from "@modelcontextprotocol/server";
+import { toNodeHandler } from "./nodeHttpBridge.js";
 import { attachControlServer } from "./control.js";
 import { loadConfig } from "./config.js";
 import { redactControlEvent } from "./contentSafety.js";
@@ -13,17 +12,22 @@ import {
   validateMcpToken,
 } from "./security.js";
 import { DuetState } from "./state.js";
-import type { AgentId, DuetConfig } from "./types.js";
+import { SessionStore } from "./store.js";
+import { AGENT_IDS, type AgentId, type DuetConfig } from "./types.js";
 import { createAgentMcpServer } from "./tools/index.js";
 
-interface TransportRecord {
-  transport: StreamableHTTPServerTransport;
-  lastSeen: number;
+/**
+ * The MCP handlers own no cross-request state: the 2026-07-28 revision made the
+ * protocol stateless, and `legacy: "stateless"` serves 2025-era clients by
+ * building a fresh server per request from the same factory. All shared state
+ * lives in `DuetState`, so both eras see the same queues and transcript.
+ */
+export interface DuetHttpApp {
+  app: express.Express;
+  close: () => Promise<void>;
 }
 
-const transports = new Map<string, TransportRecord>();
-
-export function createDuetExpressApp(state: DuetState, config: DuetConfig): express.Express {
+export function createDuetExpressApp(state: DuetState, config: DuetConfig): DuetHttpApp {
   const app = express();
   app.disable("x-powered-by");
   app.use((request, response, next) => {
@@ -38,8 +42,10 @@ export function createDuetExpressApp(state: DuetState, config: DuetConfig): expr
   app.use(express.json({ limit: config.maxMcpPayloadBytes }));
   app.use(jsonErrorHandler);
 
-  attachMcpEndpoint(app, "/claude", "claude", state, config);
-  attachMcpEndpoint(app, "/codex", "codex", state, config);
+  const handlers = new Map<AgentId, McpHttpHandler>();
+  for (const agentId of AGENT_IDS) {
+    handlers.set(agentId, attachMcpEndpoint(app, `/${agentId}`, agentId, state, config));
+  }
 
   app.get("/health", (_request, response) => {
     response.json({
@@ -96,7 +102,15 @@ export function createDuetExpressApp(state: DuetState, config: DuetConfig): expr
     });
   });
 
-  return app;
+  return {
+    app,
+    close: async () => {
+      for (const handler of handlers.values()) {
+        await handler.close();
+      }
+      handlers.clear();
+    },
+  };
 }
 
 function attachMcpEndpoint(
@@ -105,121 +119,38 @@ function attachMcpEndpoint(
   agentId: AgentId,
   state: DuetState,
   config: DuetConfig,
-): void {
-  app.post(route, async (request, response) => {
-    await handleMcpPost(request, response, agentId, state, config);
+): McpHttpHandler {
+  const handler = createMcpHandler(() => createAgentMcpServer(agentId, state, config), {
+    legacy: "stateless",
+    onerror: (error) => {
+      console.error(`MCP ${agentId} handler error: ${error.message}`);
+    },
   });
-  app.get(route, async (request, response) => {
-    await handleMcpSessionRequest(request, response, agentId, config);
+  const nodeHandler = toNodeHandler((request) => handler.fetch(request), {
+    onerror: (error) => {
+      console.error(`MCP ${agentId} adapter error: ${error.message}`);
+    },
   });
-  app.delete(route, async (request, response) => {
-    await handleMcpSessionRequest(request, response, agentId, config);
-  });
-  app.all(route, (_request, response) => {
-    response.status(401).send(mcpAuthMessage(route));
-  });
-  const authenticatedRoute = `${route}/:token`;
-  app.post(authenticatedRoute, async (request, response) => {
-    await handleMcpPost(request, response, agentId, state, config);
-  });
-  app.get(authenticatedRoute, async (request, response) => {
-    await handleMcpSessionRequest(request, response, agentId, config);
-  });
-  app.delete(authenticatedRoute, async (request, response) => {
-    await handleMcpSessionRequest(request, response, agentId, config);
-  });
-}
 
-async function handleMcpPost(
-  request: Request,
-  response: Response,
-  agentId: AgentId,
-  state: DuetState,
-  config: DuetConfig,
-): Promise<void> {
-  try {
+  const serve = async (request: Request, response: Response): Promise<void> => {
     const denial = validateMcpToken(readMcpToken(request), agentId, config);
     if (denial) {
       sendJsonRpcError(response, denial.status, denial.message);
       return;
     }
-    pruneIdleTransports(config);
-    const sessionId = readSessionId(request);
-    if (sessionId) {
-      const record = transports.get(transportKey(agentId, sessionId));
-      if (!record) {
-        sendJsonRpcError(response, 404, "Session not found");
-        return;
-      }
-      record.lastSeen = Date.now();
-      await record.transport.handleRequest(request, response, request.body);
-      return;
-    }
+    await nodeHandler(request, response, request.body);
+  };
 
-    if (!isInitializeRequest(request.body)) {
-      sendJsonRpcError(response, 400, "Bad Request: missing MCP session id or initialize request");
-      return;
-    }
-    if (transports.size >= config.maxTransports) {
-      sendJsonRpcError(response, 503, "MCP session capacity reached");
-      return;
-    }
-
-    let initializedSessionId: string | undefined;
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (newSessionId) => {
-        initializedSessionId = newSessionId;
-        transports.set(transportKey(agentId, newSessionId), { transport, lastSeen: Date.now() });
-      },
-    });
-
-    transport.onclose = () => {
-      const sessionToDelete = transport.sessionId ?? initializedSessionId;
-      if (sessionToDelete) transports.delete(transportKey(agentId, sessionToDelete));
-    };
-
-    const mcpServer = createAgentMcpServer(agentId, state, config);
-    await mcpServer.connect(transport);
-    await transport.handleRequest(request, response, request.body);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`MCP ${agentId} request failed: ${message}`);
-    if (!response.headersSent) {
-      sendJsonRpcError(response, 500, "Internal server error");
-    }
+  for (const path of [route, `${route}/:token`]) {
+    app.post(path, serve);
+    app.get(path, serve);
+    app.delete(path, serve);
   }
-}
+  app.all(route, (_request, response) => {
+    response.status(401).send(mcpAuthMessage(route));
+  });
 
-async function handleMcpSessionRequest(
-  request: Request,
-  response: Response,
-  agentId: AgentId,
-  config: DuetConfig,
-): Promise<void> {
-  const denial = validateMcpToken(readMcpToken(request), agentId, config);
-  if (denial) {
-    response.status(denial.status).send(denial.message);
-    return;
-  }
-  pruneIdleTransports(config);
-  const sessionId = readSessionId(request);
-  if (!sessionId) {
-    response.status(400).send("Invalid or missing MCP session id");
-    return;
-  }
-  const record = transports.get(transportKey(agentId, sessionId));
-  if (!record) {
-    response.status(404).send("MCP session not found");
-    return;
-  }
-  record.lastSeen = Date.now();
-  await record.transport.handleRequest(request, response);
-}
-
-function readSessionId(request: Request): string | undefined {
-  const header = request.headers["mcp-session-id"];
-  return typeof header === "string" ? header : undefined;
+  return handler;
 }
 
 function readRouteToken(request: Request): string | undefined {
@@ -241,10 +172,6 @@ function readBearerToken(request: Request): string | undefined {
 
 function mcpAuthMessage(route: string): string {
   return `MCP endpoint requires a per-agent token. Use Authorization: Bearer <token> on ${route}, or ${route}/<token> if your MCP client cannot set headers.`;
-}
-
-function transportKey(agentId: AgentId, sessionId: string): string {
-  return `${agentId}:${sessionId}`;
 }
 
 function sendJsonRpcError(response: Response, status: number, message: string): void {
@@ -305,22 +232,14 @@ function jsonErrorHandler(error: unknown, _request: Request, response: Response,
   });
 }
 
-function pruneIdleTransports(config: DuetConfig): void {
-  const cutoff = Date.now() - config.idleTransportTtlSec * 1000;
-  for (const [key, record] of transports) {
-    if (record.lastSeen >= cutoff) continue;
-    transports.delete(key);
-    void record.transport.close().catch(() => {});
-  }
-}
-
 async function main(): Promise<void> {
   const config = loadConfig();
-  const state = new DuetState(config);
-  const app = createDuetExpressApp(state, config);
+  const state = new DuetState(config, Date.now(), new SessionStore());
+  const { app, close: closeMcpHandlers } = createDuetExpressApp(state, config);
   const httpServer = createServer(app);
   const controlServer = attachControlServer(httpServer, state, config);
   state.startStallMonitor();
+  state.startRepoMonitor();
 
   const verboseEvents = process.env.DUET_VERBOSE_EVENTS === "1";
   state.subscribe((event) => {
@@ -353,10 +272,9 @@ async function main(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     state.stopStallMonitor();
-    for (const record of transports.values()) {
-      await record.transport.close();
-    }
-    transports.clear();
+    state.stopRepoMonitor();
+    state.closeStore();
+    await closeMcpHandlers();
     controlServer.close();
     await new Promise<void>((resolve, reject) => {
       httpServer.close((error) => (error ? reject(error) : resolve()));

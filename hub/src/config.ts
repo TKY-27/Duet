@@ -31,17 +31,24 @@ const RawConfigSchema = z
     noProgressHoldSec: z.number().int().min(1).max(60).default(25),
     progressIntervalSec: z.number().int().min(1).max(60).default(20),
     stallThresholdSec: z.number().int().min(30).max(600).default(120),
+    presenceTtlSec: z.number().int().min(10).max(600).default(90),
+    repoPollIntervalSec: z.number().int().min(2).max(300).default(10),
     maxTranscriptMessages: z.number().int().min(1).max(10000).default(300),
     maxQueueMessages: z.number().int().min(1).max(1000).default(100),
     maxWaitersPerAgent: z.number().int().min(1).max(100).default(20),
-    maxTransports: z.number().int().min(1).max(200).default(40),
     maxMcpPayloadBytes: z.number().int().min(1024).max(1024 * 1024).default(64 * 1024),
     maxControlPayloadBytes: z.number().int().min(1024).max(1024 * 1024).default(16 * 1024),
     maxControlConnections: z.number().int().min(1).max(20).default(5),
     maxRequestsPerMinute: z.number().int().min(10).max(10000).default(600),
-    idleTransportTtlSec: z.number().int().min(1).max(86400).default(600),
+    // Accepted but unused since the MCP 2026-07-28 migration removed protocol
+    // sessions: there are no long-lived transports left to cap or expire.
+    // Kept so configs copied from the pre-migration example still load.
+    maxTransports: z.number().int().optional(),
+    idleTransportTtlSec: z.number().int().optional(),
   })
   .strict();
+
+const DEPRECATED_CONFIG_KEYS = ["maxTransports", "idleTransportTtlSec"] as const;
 
 type RawConfig = z.infer<typeof RawConfigSchema>;
 
@@ -77,6 +84,7 @@ export function loadConfig(argv: readonly string[] = process.argv.slice(2)): Due
   const configPath = resolveConfigPath(projectRoot, explicitConfigPath);
   const fileConfig = configPath ? readConfigFile(configPath) : {};
   const parsed = RawConfigSchema.parse(fileConfig);
+  warnAboutDeprecatedKeys(parsed, configPath);
   validateHost(parsed.host, parsed.allowNonLoopbackHost);
   const roles = normalizeRoles(parsed.roles);
   const repoPath = resolveRepoPath(projectRoot, parsed.repoPath, parsed.allowUnsafeRepoPath);
@@ -92,22 +100,32 @@ export function loadConfig(argv: readonly string[] = process.argv.slice(2)): Due
     noProgressHoldSec: parsed.noProgressHoldSec,
     progressIntervalSec: parsed.progressIntervalSec,
     stallThresholdSec: parsed.stallThresholdSec,
+    presenceTtlSec: parsed.presenceTtlSec,
+    repoPollIntervalSec: parsed.repoPollIntervalSec,
     controlToken: readControlToken(),
     allowNonLoopbackHost: parsed.allowNonLoopbackHost,
     allowUnsafeRepoPath: parsed.allowUnsafeRepoPath,
     maxTranscriptMessages: parsed.maxTranscriptMessages,
     maxQueueMessages: parsed.maxQueueMessages,
     maxWaitersPerAgent: parsed.maxWaitersPerAgent,
-    maxTransports: parsed.maxTransports,
     maxMcpPayloadBytes: parsed.maxMcpPayloadBytes,
     maxControlPayloadBytes: parsed.maxControlPayloadBytes,
     maxControlConnections: parsed.maxControlConnections,
     maxRequestsPerMinute: parsed.maxRequestsPerMinute,
-    idleTransportTtlSec: parsed.idleTransportTtlSec,
     ...(configPath ? { configPath } : {}),
     secretsPath,
     projectRoot,
   };
+}
+
+function warnAboutDeprecatedKeys(parsed: RawConfig, configPath: string | undefined): void {
+  const present = DEPRECATED_CONFIG_KEYS.filter((key) => parsed[key] !== undefined);
+  if (present.length === 0) return;
+  const where = configPath ?? "the Duet config";
+  console.warn(
+    `Ignoring deprecated config keys in ${where}: ${present.join(", ")}. ` +
+      "MCP 2026-07-28 removed protocol sessions, so there are no transports to cap. Remove these keys.",
+  );
 }
 
 function resolveRepoPath(projectRoot: string, repoPath: string | undefined, allowUnsafeRepoPath: boolean): string {
