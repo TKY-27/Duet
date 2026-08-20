@@ -76,10 +76,33 @@ export function redactControlEvent(event: ControlEvent): ControlEvent {
       };
     case "error":
       return { type: "error", message: redactSensitiveText(event.message) };
+    // Carry no free text or paths, so they pass through unchanged. Listed
+    // explicitly rather than defaulted so a new event variant fails the build
+    // here instead of leaking unredacted content.
     case "status":
       return event;
     case "stall":
       return event;
+    case "presence":
+      return event;
+    case "repo":
+      return {
+        type: "repo",
+        repo: { ...event.repo, files: [], error: event.repo.error ? redactSensitiveText(event.repo.error) : undefined },
+      };
+    case "sessions":
+      return {
+        ...event,
+        sessions: event.sessions.map((session) => ({
+          ...session,
+          repoPath: redactPath(session.repoPath),
+          // Titles are the first line of a real message, so they get the same
+          // treatment as message bodies.
+          title: redactSensitiveText(session.title),
+        })),
+      };
+    case "sessionTranscript":
+      return { ...event, transcript: event.transcript.map(redactMessage) };
   }
 }
 

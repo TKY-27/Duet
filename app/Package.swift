@@ -1,11 +1,15 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
+// `.macOS(.v26)` below requires PackageDescription 6.2 or newer.
 
 import PackageDescription
 
 let package = Package(
     name: "Duet",
     platforms: [
-        .macOS(.v14)
+        // macOS 26 only. The redesign builds on the current design language and
+        // toolbar/inspector APIs; supporting older releases would mean shipping
+        // a second, untested visual path.
+        .macOS(.v26)
     ],
     products: [
         .executable(name: "Duet", targets: ["Duet"])

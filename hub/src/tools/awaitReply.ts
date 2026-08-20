@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ProgressNotification } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, ProgressNotification, ServerContext } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import type { AgentId, DuetConfig } from "../types.js";
 import type { DuetState } from "../state.js";
@@ -29,14 +28,24 @@ export function registerAwaitReplyTool(
         openWorldHint: true,
       },
     },
-    async ({ holdSec }, extra) => {
-      const progressToken = extra._meta?.progressToken;
+    async ({ holdSec }, ctx: ServerContext) => {
+      // A client that supplies a progress token has told us it will keep the
+      // request alive while we send notifications, so we may hold for the full
+      // holdSec. Without one we must return before the client's own timeout.
+      //
+      // A progress token is `string | number`, so `0` and `""` are legitimate
+      // tokens: test for presence, never truthiness. The 2026-07-28 SDK client
+      // numbers its tokens from 0, and a truthiness check there silently
+      // collapses every hold to noProgressHoldSec.
+      const rawProgressToken = ctx.mcpReq._meta?.progressToken;
+      const progressToken = rawProgressToken === null ? undefined : rawProgressToken;
+      const hasProgressToken = progressToken !== undefined;
       const requestedHoldSec = holdSec ?? config.holdSec;
-      const effectiveHoldSec = progressToken
+      const effectiveHoldSec = hasProgressToken
         ? requestedHoldSec
         : Math.min(requestedHoldSec, config.noProgressHoldSec);
       let progressCount = 0;
-      const progressInterval = progressToken
+      const progressInterval = hasProgressToken
         ? setInterval(() => {
             progressCount += 1;
             const notification: ProgressNotification = {
@@ -47,7 +56,7 @@ export function registerAwaitReplyTool(
                 message: `Duet is still waiting for a message for ${agentId}.`,
               },
             };
-            void extra.sendNotification(notification).catch((error: unknown) => {
+            void ctx.mcpReq.notify(notification).catch((error: unknown) => {
               const message = error instanceof Error ? error.message : String(error);
               console.warn(`Could not send progress notification: ${message}`);
             });
@@ -55,7 +64,7 @@ export function registerAwaitReplyTool(
         : undefined;
 
       try {
-        const message = await state.awaitMessage(agentId, effectiveHoldSec * 1000, extra.signal);
+        const message = await state.awaitMessage(agentId, effectiveHoldSec * 1000, ctx.mcpReq.signal);
         const result = state.toAwaitReplyResult(message);
         return {
           structuredContent: result,
