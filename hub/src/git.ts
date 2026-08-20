@@ -1,7 +1,228 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
+import type { RepoStatus, RepoFileChange } from "./types.js";
+
+const run = promisify(execFile);
 
 /**
+ * Read-only Git observation for the shared repository.
+ *
+ * Duet's whole premise is that the two agents edit real files on disk, so the
+ * window should show what actually changed there rather than the placeholder
+ * branch label the GUI used to display. This module answers that question and
+ * nothing else:
+ *
+ * - every command is a fixed argument list; no value from config, the GUI, or
+ *   an agent message is ever interpolated into a Git argument, so there is no
+ *   argument-injection surface;
+ * - only `repoPath` (already validated as a Git worktree at config load) is
+ *   used, and only as the working directory;
+ * - nothing here writes, stages, commits, checks out, or fetches.
+ */
+const GIT_TIMEOUT_MS = 5_000;
+const GIT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
+/** Bounds the payload pushed to the GUI when a run touches an unusual number of files. */
+const MAX_REPORTED_FILES = 200;
+
+export async function readRepoStatus(repoPath: string): Promise<RepoStatus> {
+  try {
+    const [branch, head, tracking, porcelain, numstat] = await Promise.all([
+      git(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
+      git(repoPath, ["rev-parse", "--short", "HEAD"]),
+      trackingCounts(repoPath),
+      git(repoPath, ["status", "--porcelain"]),
+      git(repoPath, ["diff", "--numstat", "HEAD"]),
+    ]);
+
+    const files = mergeChanges(parsePorcelain(porcelain), parseNumstat(numstat));
+    return {
+      available: true,
+      branch: branch === "HEAD" ? "detached" : branch,
+      head,
+      ahead: tracking.ahead,
+      behind: tracking.behind,
+      files: files.slice(0, MAX_REPORTED_FILES),
+      truncated: files.length > MAX_REPORTED_FILES,
+    };
+  } catch (error) {
+    // A missing binary, a repository lock, or a mid-rebase state must degrade
+    // the status strip, never take the Hub down.
+    return {
+      available: false,
+      branch: "unknown",
+      head: "",
+      ahead: 0,
+      behind: 0,
+      files: [],
+      truncated: false,
+      error: error instanceof Error ? error.message.split("\n")[0] : String(error),
+    };
+  }
+}
+
+async function git(repoPath: string, args: readonly string[]): Promise<string> {
+  const { stdout } = await run("git", [...args], {
+    cwd: repoPath,
+    timeout: GIT_TIMEOUT_MS,
+    maxBuffer: GIT_MAX_BUFFER_BYTES,
+    windowsHide: true,
+    // Keep Git non-interactive: never let it stop the Hub waiting on a prompt.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+  });
+  return stdout.trim();
+}
+
+async function trackingCounts(repoPath: string): Promise<{ ahead: number; behind: number }> {
+  try {
+    // Fails when the branch has no upstream, which is normal for local work.
+    const output = await git(repoPath, ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]);
+    const [behind = "0", ahead = "0"] = output.split(/\s+/);
+    return { ahead: toCount(ahead), behind: toCount(behind) };
+  } catch {
+    return { ahead: 0, behind: 0 };
+  }
+}
+
+function parsePorcelain(output: string): Map<string, RepoFileChange> {
+  const files = new Map<string, RepoFileChange>();
+  if (!output) return files;
+
+  for (const line of output.split("\n")) {
+    if (line.length < 4) continue;
+    const code = line.slice(0, 2).trim();
+    // Renames read as "old -> new"; report the destination, which is the file
+    // a reviewer needs to open.
+    const rawPath = line.slice(3);
+    const destination = rawPath.includes(" -> ") ? (rawPath.split(" -> ").at(-1) ?? rawPath) : rawPath;
+    // Key on the unquoted path so it matches the numstat map: Git quotes
+    // unusual bytes independently per command, and a quoted key against an
+    // unquoted one silently produces two rows for one file.
+    const path = unquote(destination);
+    files.set(path, { path, status: code === "??" ? "untracked" : code, added: 0, removed: 0 });
+  }
+  return files;
+}
+
+function parseNumstat(output: string): Map<string, { added: number; removed: number }> {
+  const counts = new Map<string, { added: number; removed: number }>();
+  if (!output) return counts;
+
+  for (const line of output.split("\n")) {
+    const [added, removed, ...pathParts] = line.split("\t");
+    const rawPath = pathParts.join("\t");
+    if (!rawPath) continue;
+    // "-" marks a binary file; report it as zero lines rather than NaN.
+    counts.set(numstatPath(rawPath), { added: toCount(added), removed: toCount(removed) });
+  }
+  return counts;
+}
+
+/**
+ * Reduces a numstat path to the same destination path `parsePorcelain`
+ * produces. numstat spells a rename "old => new", and inside a common prefix
+ * as "src/{old => new}/file.ts", where porcelain spells it "old -> new" — so
+ * without this the two maps never agree on a renamed file.
+ */
+function numstatPath(rawPath: string): string {
+  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(rawPath);
+  if (braced) {
+    const [, prefix, , destination, suffix] = braced;
+    return unquote(`${prefix ?? ""}${destination ?? ""}${suffix ?? ""}`.replace(/\/{2,}/g, "/"));
+  }
+  if (rawPath.includes(" => ")) {
+    return unquote(rawPath.split(" => ").at(-1) ?? rawPath);
+  }
+  return unquote(rawPath);
+}
+
+function mergeChanges(
+  porcelain: Map<string, RepoFileChange>,
+  numstat: Map<string, { added: number; removed: number }>,
+): RepoFileChange[] {
+  const merged = new Map(porcelain);
+  for (const [path, counts] of numstat) {
+    const existing = merged.get(path);
+    if (existing) {
+      existing.added = counts.added;
+      existing.removed = counts.removed;
+    } else {
+      merged.set(path, { path, status: "M", ...counts });
+    }
+  }
+  return [...merged.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function toCount(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+/**
+ * Git quotes paths containing unusual bytes, escaping them as C-style octal
+ * (`"\346\227\245.ts"`). `JSON.parse` rejects octal escapes, so decode those
+ * bytes first and read the result as UTF-8 — otherwise every non-ASCII
+ * filename, which for this project means most of them, reaches the GUI as
+ * escape codes.
+ */
+function unquote(path: string): string {
+  if (!path.startsWith('"') || !path.endsWith('"')) return path;
+  const inner = path.slice(1, -1);
+  const bytes: number[] = [];
+  for (let index = 0; index < inner.length; index += 1) {
+    const character = inner[index];
+    if (character !== "\\") {
+      bytes.push(...Buffer.from(character ?? "", "utf8"));
+      continue;
+    }
+    const octal = /^[0-7]{3}/.exec(inner.slice(index + 1, index + 4));
+    if (octal) {
+      bytes.push(Number.parseInt(octal[0], 8));
+      index += 3;
+      continue;
+    }
+    const next = inner[index + 1];
+    const simple: Record<string, number> = { n: 10, t: 9, r: 13, '"': 34, "\\": 92 };
+    if (next !== undefined && next in simple) {
+      bytes.push(simple[next] as number);
+      index += 1;
+      continue;
+    }
+    bytes.push(92);
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+export function repoStatusEquals(a: RepoStatus, b: RepoStatus): boolean {
+  return (
+    a.available === b.available &&
+    a.branch === b.branch &&
+    a.head === b.head &&
+    a.ahead === b.ahead &&
+    a.behind === b.behind &&
+    a.truncated === b.truncated &&
+    a.error === b.error &&
+    a.files.length === b.files.length &&
+    a.files.every((file, index) => {
+      const other = b.files[index];
+      return (
+        other !== undefined &&
+        file.path === other.path &&
+        file.status === other.status &&
+        file.added === other.added &&
+        file.removed === other.removed
+      );
+    })
+  );
+}
+
+/**
+ * Branch name only, read straight from Git metadata on disk: no subprocess,
+ * so this is cheap enough to call on every snapshot and has no argument
+ * surface at all. `readRepoStatus` above shells out for the richer picture
+ * (ahead/behind and per-file counts) that cannot be read from HEAD alone.
+ *
  * Best-effort current branch for a repoPath, read directly from Git metadata on disk
  * (no subprocess, no network). Returns the branch name, a short commit hash for a
  * detached HEAD, or "" on any error. Safe to call on every snapshot.

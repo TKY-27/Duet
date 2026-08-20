@@ -28,10 +28,8 @@ async function main(): Promise<void> {
         maxTranscriptMessages: 50,
         maxQueueMessages: 20,
         maxWaitersPerAgent: 5,
-        maxTransports: 10,
         maxControlConnections: 2,
         maxRequestsPerMinute: 120,
-        idleTransportTtlSec: 30,
       },
       null,
       2,
@@ -43,6 +41,9 @@ async function main(): Promise<void> {
     env: {
       ...process.env,
       DUET_CONTROL_TOKEN: controlToken,
+      // Keep session history inside the throwaway smoke directory instead of
+      // the real application-support path.
+      DUET_DATA_DIR: path.join(tempDir, "data"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
