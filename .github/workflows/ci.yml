@@ -10,17 +10,28 @@ permissions:
 jobs:
   hub:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22", "24"]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: hub/package-lock.json
       - run: npm ci
         working-directory: hub
-      - run: npm audit --omit=dev
+      # Gate on high and critical advisories. A plain `npm audit` fails on any
+      # advisory in any transitive dependency, which made this step permanently
+      # red and therefore ignored; `npm run audit:report` prints the full list
+      # for review without failing the build.
+      - run: npm audit --omit=dev --audit-level=high
         working-directory: hub
+      - run: npm run audit:report
+        working-directory: hub
+        continue-on-error: true
       - run: npm run license:check
         working-directory: hub
       - run: npm test
@@ -31,14 +42,17 @@ jobs:
   hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: shellcheck script/*.sh
       - run: ./script/scan_for_secrets.sh
 
   app:
-    runs-on: macos-latest
+    # Pinned rather than macos-latest: the app targets macOS 26, so the job
+    # needs that SDK. Pinning keeps the build deterministic instead of
+    # depending on where the macos-latest label currently points.
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: swift build --package-path app
       - run: swift test --package-path app

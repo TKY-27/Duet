@@ -23,24 +23,28 @@
     "url": "https://github.com/TKY-27/Duet/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
+    "audit:report": "npm audit --omit=dev",
     "build": "tsc -p tsconfig.json",
     "license:check": "node scripts/check-license-inventory.mjs",
+    "license:generate": "node scripts/generate-license-inventory.mjs",
     "smoke": "npm run build && node dist/smoke.js",
     "start": "node dist/server.js",
     "test": "npm run build && node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "express": "^5.2.1",
-    "ws": "^8.21.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/express": "^5.0.6",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.2.0",
     "@types/ws": "^8.18.1",
     "typescript": "^7.0.2"
   },
