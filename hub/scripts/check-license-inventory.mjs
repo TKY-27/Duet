@@ -17,13 +17,21 @@ const packagePaths = Object.keys(lock.packages ?? {})
 const failures = [];
 
 for (const packagePath of packagePaths) {
+  const lockEntry = lock.packages[packagePath] ?? {};
   const packageJsonPath = path.join(hubRoot, packagePath, "package.json");
-  if (!fs.existsSync(packageJsonPath)) {
+  if (!fs.existsSync(packageJsonPath) && !lockEntry.optional) {
     failures.push(`${packagePath}: package.json is missing; run npm ci before license scan.`);
     continue;
   }
 
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  // Optional platform packages not selected by npm are absent from
+  // node_modules, but npm's lockfile includes their license metadata.
+  const packageJson = fs.existsSync(packageJsonPath)
+    ? JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
+    : {
+        name: packagePath.replace(/^node_modules\//, ""),
+        license: lockEntry.license,
+      };
   const name = packageJson.name ?? packagePath.replace(/^node_modules\//, "");
   const license = normalizeLicense(packageJson.license ?? packageJson.licenses);
 

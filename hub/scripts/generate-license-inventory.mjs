@@ -23,14 +23,25 @@ const hubPackage = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 const locked = [];
 for (const packagePath of Object.keys(lock.packages ?? {})) {
   if (!packagePath.startsWith("node_modules/")) continue;
+  const lockEntry = lock.packages[packagePath] ?? {};
   const manifestPath = path.join(hubRoot, packagePath, "package.json");
-  if (!fs.existsSync(manifestPath)) {
+  if (!fs.existsSync(manifestPath) && !lockEntry.optional) {
     throw new Error(`${packagePath}/package.json is missing; run npm ci before generating.`);
   }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  // npm installs only the platform-appropriate member of an optional
+  // dependency set. TypeScript 7 records every platform package in the lock,
+  // but most of their manifests are intentionally absent on this machine.
+  // The lockfile still carries the package metadata needed for the inventory.
+  const manifest = fs.existsSync(manifestPath)
+    ? JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+    : {
+        name: packagePath.replace(/^node_modules\//, ""),
+        version: lockEntry.version,
+        license: lockEntry.license,
+      };
   locked.push({
     name: manifest.name ?? packagePath.replace(/^node_modules\//, ""),
-    version: manifest.version ?? lock.packages[packagePath].version ?? "unknown",
+    version: manifest.version ?? lockEntry.version ?? "unknown",
     license: normalizeLicense(manifest.license ?? manifest.licenses) ?? "UNKNOWN",
   });
 }

@@ -4,7 +4,7 @@ This inventory is generated from `hub/package-lock.json` by `npm run license:gen
 and verified in CI by `npm run license:check`. Do not edit it by hand.
 The SwiftPM app declares no third-party package dependencies.
 
-Last generated: 2026-08-16.
+Last generated: 2026-08-20.
 
 ## Direct Hub Dependencies
 
@@ -12,29 +12,49 @@ Last generated: 2026-08-16.
 | --- | --- | --- | --- |
 | `@modelcontextprotocol/server` | 2.0.0 | runtime | MIT |
 | `express` | 5.2.1 | runtime | MIT |
-| `ws` | 8.21.0 | runtime | MIT |
+| `ws` | 8.21.3 | runtime | MIT |
 | `zod` | 4.4.3 | runtime | MIT |
 | `@modelcontextprotocol/client` | 2.0.0 | development | MIT |
 | `@modelcontextprotocol/sdk` | 1.30.0 | development | MIT |
 | `@types/express` | 5.0.6 | development | MIT |
-| `@types/node` | 25.9.1 | development | MIT |
+| `@types/node` | 26.2.0 | development | MIT |
 | `@types/ws` | 8.18.1 | development | MIT |
-| `typescript` | 6.0.3 | development | Apache-2.0 |
+| `typescript` | 7.0.2 | development | Apache-2.0 |
 
 ## Locked License Summary
 
 | License | Package count |
 | --- | ---: |
 | MIT | 98 |
+| Apache-2.0 | 21 |
 | ISC | 7 |
 | BSD-3-Clause | 2 |
-| Apache-2.0 | 1 |
 | BSD-2-Clause | 1 |
 
 Non-MIT locked packages:
 
 | Package | Version | License |
 | --- | --- | --- |
+| `@typescript/typescript-aix-ppc64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-darwin-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-darwin-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-freebsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-freebsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-arm` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-loong64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-mips64el` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-ppc64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-riscv64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-s390x` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-netbsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-netbsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-openbsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-openbsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-sunos-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-win32-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-win32-x64` | 7.0.2 | Apache-2.0 |
 | `fast-uri` | 3.1.2 | BSD-3-Clause |
 | `inherits` | 2.0.4 | ISC |
 | `isexe` | 2.0.0 | ISC |
@@ -42,7 +62,7 @@ Non-MIT locked packages:
 | `once` | 1.4.0 | ISC |
 | `qs` | 6.15.2 | BSD-3-Clause |
 | `setprototypeof` | 1.2.0 | ISC |
-| `typescript` | 6.0.3 | Apache-2.0 |
+| `typescript` | 7.0.2 | Apache-2.0 |
 | `which` | 2.0.2 | ISC |
 | `wrappy` | 1.0.2 | ISC |
 | `zod-to-json-schema` | 3.25.2 | ISC |
@@ -61,12 +81,32 @@ Non-MIT locked packages:
 | `@types/express` | 5.0.6 | MIT |
 | `@types/express-serve-static-core` | 5.1.1 | MIT |
 | `@types/http-errors` | 2.0.5 | MIT |
-| `@types/node` | 25.9.1 | MIT |
+| `@types/node` | 26.2.0 | MIT |
 | `@types/qs` | 6.15.1 | MIT |
 | `@types/range-parser` | 1.2.7 | MIT |
 | `@types/send` | 1.2.1 | MIT |
 | `@types/serve-static` | 2.2.0 | MIT |
 | `@types/ws` | 8.18.1 | MIT |
+| `@typescript/typescript-aix-ppc64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-darwin-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-darwin-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-freebsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-freebsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-arm` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-loong64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-mips64el` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-ppc64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-riscv64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-s390x` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-linux-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-netbsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-netbsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-openbsd-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-openbsd-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-sunos-x64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-win32-arm64` | 7.0.2 | Apache-2.0 |
+| `@typescript/typescript-win32-x64` | 7.0.2 | Apache-2.0 |
 | `accepts` | 2.0.0 | MIT |
 | `ajv` | 8.20.0 | MIT |
 | `ajv-formats` | 3.0.1 | MIT |
@@ -106,7 +146,7 @@ Non-MIT locked packages:
 | `gopd` | 1.2.0 | MIT |
 | `has-symbols` | 1.1.0 | MIT |
 | `hasown` | 2.0.4 | MIT |
-| `hono` | 4.12.23 | MIT |
+| `hono` | 4.13.2 | MIT |
 | `http-errors` | 2.0.1 | MIT |
 | `iconv-lite` | 0.7.2 | MIT |
 | `inherits` | 2.0.4 | ISC |
@@ -151,12 +191,12 @@ Non-MIT locked packages:
 | `statuses` | 2.0.2 | MIT |
 | `toidentifier` | 1.0.1 | MIT |
 | `type-is` | 2.1.0 | MIT |
-| `typescript` | 6.0.3 | Apache-2.0 |
-| `undici-types` | 7.24.6 | MIT |
+| `typescript` | 7.0.2 | Apache-2.0 |
+| `undici-types` | 8.3.0 | MIT |
 | `unpipe` | 1.0.0 | MIT |
 | `vary` | 1.1.2 | MIT |
 | `which` | 2.0.2 | ISC |
 | `wrappy` | 1.0.2 | ISC |
-| `ws` | 8.21.0 | MIT |
+| `ws` | 8.21.3 | MIT |
 | `zod` | 4.4.3 | MIT |
 | `zod-to-json-schema` | 3.25.2 | ISC |
